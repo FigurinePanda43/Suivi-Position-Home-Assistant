@@ -1,0 +1,12 @@
+{
+  "domain": "suivi_presence",
+  "name": "Suivi de Présence",
+  "codeowners": ["@votre-username"],
+  "config_flow": true,
+  "dependencies": ["person", "zone"],
+  "documentation": "https://github.com/votre-repo/suivi-presence",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/votre-repo/suivi-presence/issues",
+  "requirements": [],
+  "version": "0.0.1"
+}

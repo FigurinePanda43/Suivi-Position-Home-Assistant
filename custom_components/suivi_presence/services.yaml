@@ -1,0 +1,15 @@
+export_csv:
+  name: Exporter en CSV
+  description: Exporte l'historique des mouvements en fichier CSV.
+  fields:
+    filename:
+      name: Nom du fichier
+      description: Nom du fichier CSV à créer (optionnel). Si non spécifié, un nom avec horodatage sera généré.
+      required: false
+      example: "mon_export.csv"
+      selector:
+        text:
+
+clear_history:
+  name: Effacer l'historique
+  description: Efface tout l'historique des mouvements enregistrés. Cette action est irréversible.

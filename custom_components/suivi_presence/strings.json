@@ -1,0 +1,66 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configuration du Suivi de Présence",
+        "description": "Configurez le suivi des mouvements entre zones pour les personnes.",
+        "data": {
+          "scan_interval": "Intervalle de vérification (secondes)",
+          "csv_path": "Chemin du fichier CSV (optionnel)"
+        }
+      }
+    },
+    "error": {
+      "invalid_path": "Chemin de fichier invalide",
+      "cannot_connect": "Impossible de se connecter"
+    },
+    "abort": {
+      "already_configured": "L'intégration est déjà configurée"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options du Suivi de Présence",
+        "data": {
+          "scan_interval": "Intervalle de vérification (secondes)",
+          "tracked_persons": "Personnes à suivre"
+        }
+      }
+    }
+  },
+  "services": {
+    "export_csv": {
+      "name": "Exporter en CSV",
+      "description": "Exporte l'historique des mouvements en fichier CSV.",
+      "fields": {
+        "filename": {
+          "name": "Nom du fichier",
+          "description": "Nom du fichier CSV à créer (optionnel)"
+        }
+      }
+    },
+    "clear_history": {
+      "name": "Effacer l'historique",
+      "description": "Efface tout l'historique des mouvements enregistrés."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "presence_tracker": {
+        "name": "Suivi de présence",
+        "state_attributes": {
+          "persons_home": {
+            "name": "Personnes à domicile"
+          },
+          "persons_away": {
+            "name": "Personnes absentes"
+          },
+          "last_change": {
+            "name": "Dernier changement"
+          }
+        }
+      }
+    }
+  }
+}

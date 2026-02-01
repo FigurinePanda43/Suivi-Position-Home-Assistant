@@ -1,0 +1,82 @@
+# Exemple de configuration du tableau de bord Lovelace pour Suivi de Présence
+#
+# Instructions:
+# 1. Ajoutez la ressource JavaScript dans la configuration Lovelace:
+#    resources:
+#      - url: /local/community/suivi_presence/suivi-presence-card.js
+#        type: module
+#
+# 2. Copiez cette configuration dans votre tableau de bord
+
+title: Suivi de Présence
+views:
+  - title: Présence
+    icon: mdi:account-group
+    path: presence
+    cards:
+      # Carte personnalisée Suivi de Présence
+      - type: custom:suivi-presence-card
+        title: Suivi des Présences
+        show_history: true
+        history_count: 10
+
+      # Ou utilisez les entités standard
+      - type: entities
+        title: Statut des Présences
+        entities:
+          - entity: sensor.suivi_presence_suivi_presence
+            name: Total personnes suivies
+          - entity: sensor.suivi_presence_personnes_a_domicile
+            name: À domicile
+          - entity: sensor.suivi_presence_personnes_absentes
+            name: Absents
+          - entity: sensor.suivi_presence_total_des_changements
+            name: Changements enregistrés
+
+      # Bouton de téléchargement
+      - type: button
+        name: Télécharger l'historique
+        icon: mdi:download
+        tap_action:
+          action: url
+          url_path: /api/suivi_presence/download
+
+      # Carte de statistiques
+      - type: statistics-graph
+        title: Évolution des changements
+        entities:
+          - entity: sensor.suivi_presence_total_des_changements
+        stat_types:
+          - change
+        days_to_show: 7
+
+      # Historique graphique
+      - type: history-graph
+        title: Historique des présences (24h)
+        hours_to_show: 24
+        entities:
+          - entity: sensor.suivi_presence_personnes_a_domicile
+          - entity: sensor.suivi_presence_personnes_absentes
+
+      # Carte markdown avec instructions
+      - type: markdown
+        title: Instructions
+        content: |
+          ## Utilisation
+
+          ### Télécharger l'historique
+          Cliquez sur le bouton "Télécharger l'historique" pour obtenir
+          un fichier CSV avec tous les mouvements enregistrés.
+
+          ### Services disponibles
+          - `suivi_presence.export_csv` : Exporter vers un fichier
+          - `suivi_presence.clear_history` : Effacer l'historique
+
+          ### Format du CSV
+          | Colonne | Description |
+          |---------|-------------|
+          | timestamp | Date et heure |
+          | person | Nom de la personne |
+          | previous_zone | Zone de départ |
+          | new_zone | Zone d'arrivée |
+          | duration | Durée dans la zone précédente |

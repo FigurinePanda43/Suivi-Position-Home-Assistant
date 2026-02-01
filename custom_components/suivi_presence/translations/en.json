@@ -1,0 +1,66 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Presence Tracking Configuration",
+        "description": "Configure movement tracking between zones for persons.",
+        "data": {
+          "scan_interval": "Scan interval (seconds)",
+          "csv_path": "CSV file path (optional)"
+        }
+      }
+    },
+    "error": {
+      "invalid_path": "Invalid file path",
+      "cannot_connect": "Unable to connect"
+    },
+    "abort": {
+      "already_configured": "Integration is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Presence Tracking Options",
+        "data": {
+          "scan_interval": "Scan interval (seconds)",
+          "tracked_persons": "Persons to track"
+        }
+      }
+    }
+  },
+  "services": {
+    "export_csv": {
+      "name": "Export to CSV",
+      "description": "Exports movement history to a CSV file.",
+      "fields": {
+        "filename": {
+          "name": "Filename",
+          "description": "Name of the CSV file to create (optional)"
+        }
+      }
+    },
+    "clear_history": {
+      "name": "Clear history",
+      "description": "Clears all recorded movement history."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "presence_tracker": {
+        "name": "Presence tracker",
+        "state_attributes": {
+          "persons_home": {
+            "name": "Persons at home"
+          },
+          "persons_away": {
+            "name": "Persons away"
+          },
+          "last_change": {
+            "name": "Last change"
+          }
+        }
+      }
+    }
+  }
+}

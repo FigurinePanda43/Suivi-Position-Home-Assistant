@@ -213,10 +213,8 @@ async def async_register_static_path(hass: HomeAssistant) -> None:
 
     # Register the static path - files will be available at /local/suivi_presence/
     if os.path.isdir(www_path):
-        hass.http.register_static_path(
-            "/local/suivi_presence",
-            www_path,
-            cache_headers=False,
+        await hass.http.async_register_static_paths(
+            [("/local/suivi_presence", www_path, False)]
         )
         _LOGGER.info(
             "Registered static path: /local/suivi_presence -> %s", www_path

@@ -228,4 +228,3 @@ MIT License - Voir [LICENSE](LICENSE) pour plus de détails.
 ## Support
 
 - [Issues GitHub](https://github.com/FigurinePanda43/Suivi-Pr-sence/issues)
-- [Discussions](https://github.com/FigurinePanda43/Suivi-Pr-sence/discussions)

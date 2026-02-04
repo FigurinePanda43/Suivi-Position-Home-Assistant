@@ -758,32 +758,74 @@ class SuiviPresenceCard extends HTMLElement {
     return params.toString();
   }
 
-  _downloadCSV() {
+  async _downloadCSV() {
     const queryParams = this._buildQueryParams();
     const url = queryParams
       ? `/api/suivi_presence/download/csv?${queryParams}`
       : "/api/suivi_presence/download";
 
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "suivi_presence.csv";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${this._hass.auth.data.access_token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, "");
+      const filename = `suivi_presence_${timestamp}.csv`;
+
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
+    } catch (error) {
+      console.error("Erreur téléchargement CSV:", error);
+      alert("Erreur lors du téléchargement CSV: " + error.message);
+    }
   }
 
-  _downloadExcel() {
+  async _downloadExcel() {
     const queryParams = this._buildQueryParams();
     const url = `/api/suivi_presence/download/excel${
       queryParams ? "?" + queryParams : ""
     }`;
 
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "suivi_presence.xlsx";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${this._hass.auth.data.access_token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, "");
+      const filename = `suivi_presence_${timestamp}.xlsx`;
+
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(link.href);
+    } catch (error) {
+      console.error("Erreur téléchargement Excel:", error);
+      alert("Erreur lors du téléchargement Excel: " + error.message);
+    }
   }
 }
 

@@ -15,7 +15,7 @@ from typing import Any
 
 import voluptuous as vol
 from aiohttp import web
-from homeassistant.components.http import HomeAssistantView
+from homeassistant.components.http import HomeAssistantView, StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     EVENT_HOMEASSISTANT_STARTED,
@@ -214,7 +214,7 @@ async def async_register_static_path(hass: HomeAssistant) -> None:
     # Register the static path - files will be available at /local/suivi_presence/
     if os.path.isdir(www_path):
         await hass.http.async_register_static_paths(
-            [("/local/suivi_presence", www_path, False)]
+            [StaticPathConfig("/local/suivi_presence", www_path, False)]
         )
         _LOGGER.info(
             "Registered static path: /local/suivi_presence -> %s", www_path

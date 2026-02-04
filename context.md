@@ -1,6 +1,6 @@
 # Context - Intégration Suivi de Présence pour Home Assistant
 
-## Version actuelle : 0.0.1
+## Version actuelle : 0.1.0
 
 ---
 
@@ -10,10 +10,14 @@ Cette intégration Home Assistant permet de suivre les changements de zone de to
 
 ### Fonctionnalités principales
 - Suivi automatique des changements de zone pour chaque personne
-- Enregistrement horodaté dans un fichier CSV
-- Tableau de bord de visualisation
-- Téléchargement du fichier CSV
-- Compatible avec toutes les installations Home Assistant
+- **CSV permanent** : Stockage illimité (Home Assistant ne garde que 10 jours)
+- Tableau de bord de visualisation avec filtres
+- **Export CSV** avec filtrage par dates et personnes
+- **Export Excel** avancé avec :
+  - Une feuille par personne
+  - Données brutes en tableau formaté
+  - Statistiques par zone (temps total, moyennes jour/semaine/mois, fréquence)
+- Compatible avec toutes les installations Home Assistant et HACS
 
 ---
 
@@ -59,18 +63,19 @@ Cette intégration Home Assistant permet de suivre les changements de zone de to
 suivi-presence/
 ├── custom_components/
 │   └── suivi_presence/
-│       ├── __init__.py          # Point d'entrée de l'intégration
-│       ├── manifest.json        # Métadonnées de l'intégration
-│       ├── const.py             # Constantes
+│       ├── __init__.py          # Point d'entrée + PresenceTracker
+│       ├── manifest.json        # Métadonnées (version, dépendances)
+│       ├── const.py             # Constantes et configuration
 │       ├── config_flow.py       # Configuration UI
 │       ├── sensor.py            # Entités sensor
+│       ├── export.py            # Module d'export CSV/Excel [NEW v0.1.0]
 │       ├── services.yaml        # Définition des services
 │       ├── strings.json         # Traductions
 │       ├── translations/
 │       │   ├── fr.json          # Traductions françaises
 │       │   └── en.json          # Traductions anglaises
 │       └── www/
-│           └── suivi-presence-card.js  # Carte Lovelace personnalisée
+│           └── suivi-presence-card.js  # Carte Lovelace avec filtres
 ├── examples/
 │   └── lovelace-dashboard.yaml  # Exemple de configuration
 ├── hacs.json                    # Configuration HACS
@@ -149,7 +154,7 @@ suivi-presence/
 
 ## 9. Roadmap
 
-### Version 0.0.1 (actuelle) ✅
+### Version 0.0.1 ✅
 - [x] Structure de base
 - [x] Manifest et configuration
 - [x] Config Flow (configuration via UI)
@@ -162,16 +167,29 @@ suivi-presence/
 - [x] Support HACS
 - [x] Traductions FR/EN
 
-### Version 0.1.0 (prévue)
-- [ ] Filtrage par personne (choix des personnes à suivre)
-- [ ] Export personnalisé (plage de dates)
-- [ ] Statistiques avancées
-- [ ] Notifications de changement de zone
+### Version 0.1.0 (actuelle) ✅
+- [x] CSV permanent comme source de données (contourne la limite 10 jours HA)
+- [x] Export CSV avec filtrage par plage de dates
+- [x] Export CSV avec filtrage par personnes
+- [x] Export Excel avancé avec :
+  - [x] Une feuille par personne sélectionnée
+  - [x] Données brutes formatées en tableau
+  - [x] Statistiques par zone :
+    - [x] Temps total passé
+    - [x] Moyenne journalière
+    - [x] Moyenne hebdomadaire
+    - [x] Moyenne mensuelle
+    - [x] Fréquence (nombre de visites)
+    - [x] Première et dernière visite
+- [x] Nouveaux endpoints HTTP avec filtres
+- [x] Carte Lovelace améliorée avec panel de filtres
+- [x] Service export_excel
 
 ### Version 0.2.0 (prévue)
 - [ ] Panel sidebar dédié
 - [ ] Graphiques d'historique dans le dashboard
 - [ ] Zones favorites / zones ignorées
+- [ ] Notifications de changement de zone
 
 ### Version 1.0.0 (cible)
 - [ ] Version stable et testée en production
@@ -212,6 +230,29 @@ suivi-presence/
   - HTTP views pour téléchargement (authentifié)
   - 4 sensors : principal, personnes_home, personnes_away, total_changes
 
+### Session 2 - Export avancé (v0.1.0)
+- **Date** : 2024
+- **Objectif** : Ajout des exports filtrables CSV/Excel avec statistiques
+- **Fichiers créés** :
+  - `custom_components/suivi_presence/export.py` - Module d'export
+
+- **Fichiers modifiés** :
+  - `__init__.py` - Nouveaux services et endpoints HTTP
+  - `const.py` - Nouvelles constantes pour exports
+  - `manifest.json` - Version 0.1.0, ajout openpyxl
+  - `services.yaml` - Services export_csv et export_excel avec paramètres
+  - `www/suivi-presence-card.js` - Panel de filtres, boutons CSV/Excel
+
+- **Fonctionnalités ajoutées** :
+  - CSV permanent (source de données illimitée)
+  - Export CSV filtrable (dates, personnes)
+  - Export Excel avec feuilles par personne
+  - Statistiques automatiques par zone dans Excel
+  - 3 endpoints HTTP : /download, /download/csv, /download/excel
+  - Interface de filtrage dans la carte Lovelace
+
+- **Dépendance ajoutée** : `openpyxl>=3.1.0`
+
 ---
 
 ## 11. Contacts et Ressources
@@ -224,4 +265,4 @@ suivi-presence/
 
 ---
 
-*Dernière mise à jour : Version 0.0.1*
+*Dernière mise à jour : Version 0.1.0*

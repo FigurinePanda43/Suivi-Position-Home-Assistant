@@ -1,6 +1,6 @@
 export_csv:
   name: Exporter en CSV
-  description: Exporte l'historique des mouvements en fichier CSV.
+  description: Exporte l'historique des mouvements en fichier CSV avec filtrage optionnel par dates et personnes.
   fields:
     filename:
       name: Nom du fichier
@@ -9,7 +9,74 @@ export_csv:
       example: "mon_export.csv"
       selector:
         text:
+    start_date:
+      name: Date de début
+      description: Date de début pour le filtrage (format ISO, ex. 2024-01-01 ou 2024-01-01T00:00:00).
+      required: false
+      example: "2024-01-01"
+      selector:
+        text:
+    end_date:
+      name: Date de fin
+      description: Date de fin pour le filtrage (format ISO, ex. 2024-12-31 ou 2024-12-31T23:59:59).
+      required: false
+      example: "2024-12-31"
+      selector:
+        text:
+    persons:
+      name: Personnes
+      description: Liste des personnes à inclure dans l'export. Si vide, toutes les personnes sont incluses.
+      required: false
+      example:
+        - "Jean"
+        - "Marie"
+      selector:
+        object:
+
+export_excel:
+  name: Exporter en Excel
+  description: >-
+    Exporte l'historique en fichier Excel avec une feuille par personne,
+    incluant les données brutes et des statistiques détaillées
+    (temps total par zone, moyennes journalière/hebdomadaire/mensuelle, fréquence).
+  fields:
+    filename:
+      name: Nom du fichier
+      description: Nom du fichier Excel à créer (optionnel). L'extension .xlsx sera ajoutée automatiquement.
+      required: false
+      example: "rapport_presence"
+      selector:
+        text:
+    start_date:
+      name: Date de début
+      description: Date de début pour le filtrage (format ISO, ex. 2024-01-01).
+      required: false
+      example: "2024-01-01"
+      selector:
+        text:
+    end_date:
+      name: Date de fin
+      description: Date de fin pour le filtrage (format ISO, ex. 2024-12-31).
+      required: false
+      example: "2024-12-31"
+      selector:
+        text:
+    persons:
+      name: Personnes
+      description: >-
+        Liste des personnes à inclure dans l'export.
+        Chaque personne aura sa propre feuille avec ses données et statistiques.
+        Si vide, toutes les personnes sont incluses.
+      required: false
+      example:
+        - "Jean"
+        - "Marie"
+      selector:
+        object:
 
 clear_history:
   name: Effacer l'historique
-  description: Efface tout l'historique des mouvements enregistrés. Cette action est irréversible.
+  description: >-
+    Efface TOUT l'historique des mouvements enregistrés.
+    ATTENTION: Cette action est irréversible et supprime toutes les données du CSV permanent.
+    Utilisez avec précaution!

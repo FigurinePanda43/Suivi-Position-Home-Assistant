@@ -7,6 +7,45 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Non publié]
 
+## [0.1.0] - 2024-XX-XX
+
+### Ajouté
+- **CSV permanent** : Le fichier CSV sert maintenant de source de données permanente
+  - Contourne la limitation de 10 jours d'historique de Home Assistant
+  - Chargement automatique des données existantes au démarrage
+- **Export CSV filtrable** :
+  - Filtrage par plage de dates (start_date, end_date)
+  - Filtrage par personnes sélectionnées
+  - Nouvel endpoint `/api/suivi_presence/download/csv`
+- **Export Excel avancé** :
+  - Une feuille par personne avec données et statistiques
+  - Statistiques automatiques par zone :
+    - Temps total passé dans chaque zone
+    - Moyenne journalière
+    - Moyenne hebdomadaire
+    - Moyenne mensuelle
+    - Fréquence (nombre de visites)
+    - Première et dernière visite
+  - Tableaux formatés avec styles
+  - Endpoint `/api/suivi_presence/download/excel`
+- **Service `suivi_presence.export_excel`** : Export Excel via automatisation
+- **Carte Lovelace améliorée** :
+  - Panel de filtres dépliable
+  - Sélection de dates
+  - Cases à cocher pour sélectionner les personnes
+  - Boutons CSV et Excel
+  - Affichage de la plage de données disponible
+- Nouvelle colonne `duration_seconds` dans le CSV pour calculs facilités
+
+### Modifié
+- Service `export_csv` accepte maintenant les paramètres de filtrage
+- Endpoints HTTP avec support des query parameters
+
+### Technique
+- Nouveau module `export.py` pour la logique d'export
+- Dépendance `openpyxl>=3.1.0` pour l'export Excel
+- Fonctions utilitaires pour le calcul des statistiques
+
 ## [0.0.1] - 2024-XX-XX
 
 ### Ajouté

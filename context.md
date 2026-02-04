@@ -152,6 +152,58 @@ suivi-presence/
 
 ---
 
+## 8bis. PROTECTION DES DONNÉES - RÈGLES CRITIQUES
+
+> **IMPORTANT** : Le fichier CSV est la source de données permanente de l'utilisateur.
+> Toute perte de données est INACCEPTABLE.
+
+### Règles absolues
+
+1. **NE JAMAIS supprimer** le fichier CSV existant lors d'une mise à jour
+2. **NE JAMAIS modifier** la structure des colonnes existantes (ajout OK, suppression/renommage INTERDIT)
+3. **TOUJOURS** charger les données existantes au démarrage
+4. **TOUJOURS** préserver la rétrocompatibilité du format CSV
+
+### Migration de données
+
+Si une nouvelle version nécessite des changements de structure :
+
+1. **Ajouter** de nouvelles colonnes (ne pas supprimer les anciennes)
+2. **Créer** une fonction de migration qui :
+   - Détecte l'ancienne structure
+   - Ajoute les nouvelles colonnes avec valeurs par défaut
+   - Préserve toutes les données existantes
+3. **Documenter** la migration dans le CHANGELOG
+
+### Structure CSV actuelle (v0.1.0)
+
+```
+timestamp,person,previous_zone,new_zone,duration_in_previous,duration_seconds
+```
+
+### Historique des structures
+
+| Version | Colonnes | Notes |
+|---------|----------|-------|
+| 0.0.1 | timestamp, person, previous_zone, new_zone, duration_in_previous | Structure initiale |
+| 0.1.0 | + duration_seconds | Ajout colonne pour calculs |
+
+### Code de chargement sécurisé
+
+Le code doit :
+- Accepter les CSV avec ou sans les nouvelles colonnes
+- Remplir les colonnes manquantes avec des valeurs par défaut
+- Ne jamais écraser un fichier existant sans backup
+
+### Tests obligatoires avant release
+
+- [ ] Charger un CSV de la version précédente
+- [ ] Vérifier que toutes les données sont préservées
+- [ ] Vérifier que les nouvelles fonctionnalités fonctionnent
+- [ ] Vérifier que l'export contient toutes les données
+
+---
+
 ## 9. Roadmap
 
 ### Version 0.0.1 ✅

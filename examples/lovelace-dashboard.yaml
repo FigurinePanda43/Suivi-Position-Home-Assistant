@@ -3,9 +3,10 @@
 #
 # Instructions:
 # 1. Ajoutez la ressource JavaScript dans la configuration Lovelace:
-#    resources:
-#      - url: /local/community/suivi_presence/suivi-presence-card.js
-#        type: module
+#    Allez dans Configuration > Tableaux de bord > Ressources (en haut à droite)
+#    Puis ajoutez:
+#      URL: /local/suivi_presence/suivi-presence-card.js
+#      Type: Module JavaScript
 #
 # 2. Copiez cette configuration dans votre tableau de bord
 #

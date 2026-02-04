@@ -102,6 +102,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     tracker = PresenceTracker(hass, csv_path, entry)
     hass.data[DOMAIN][entry.entry_id] = tracker
 
+    # Register static path for the Lovelace card
+    await async_register_static_path(hass)
+
     # Start tracking after Home Assistant is fully started
     async def start_tracking(_event: Event) -> None:
         await tracker.async_start()
@@ -201,6 +204,23 @@ async def async_register_services(
         schema=SERVICE_EXPORT_EXCEL_SCHEMA,
     )
     hass.services.async_register(DOMAIN, SERVICE_CLEAR_HISTORY, handle_clear_history)
+
+
+async def async_register_static_path(hass: HomeAssistant) -> None:
+    """Register static path for Lovelace card."""
+    # Get the path to the www folder in this integration
+    www_path = os.path.join(os.path.dirname(__file__), "www")
+
+    # Register the static path - files will be available at /local/suivi_presence/
+    if os.path.isdir(www_path):
+        hass.http.register_static_path(
+            "/local/suivi_presence",
+            www_path,
+            cache_headers=False,
+        )
+        _LOGGER.info(
+            "Registered static path: /local/suivi_presence -> %s", www_path
+        )
 
 
 async def async_register_http_views(

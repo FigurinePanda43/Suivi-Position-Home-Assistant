@@ -1,7 +1,7 @@
 # Suivi de Présence pour Home Assistant
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/votre-repo/suivi-presence)
+[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/FigurinePanda43/Suivi-Pr-sence)
 
 Une intégration Home Assistant pour suivre les mouvements des personnes entre les zones, avec stockage permanent et exports avancés (CSV/Excel).
 
@@ -227,5 +227,5 @@ MIT License - Voir [LICENSE](LICENSE) pour plus de détails.
 
 ## Support
 
-- [Issues GitHub](https://github.com/votre-repo/suivi-presence/issues)
-- [Discussions](https://github.com/votre-repo/suivi-presence/discussions)
+- [Issues GitHub](https://github.com/FigurinePanda43/Suivi-Pr-sence/issues)
+- [Discussions](https://github.com/FigurinePanda43/Suivi-Pr-sence/discussions)

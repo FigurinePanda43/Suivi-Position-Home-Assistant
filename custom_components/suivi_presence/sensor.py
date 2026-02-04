@@ -95,7 +95,7 @@ class PresenceTrackerSensor(PresenceTrackerBaseSensor):
         """Return additional attributes."""
         persons_home = []
         persons_away = []
-        persons_other = []
+        persons_other = {}
 
         for entity_id, data in self.tracker.person_states.items():
             name = data.get("friendly_name", entity_id)
@@ -106,13 +106,19 @@ class PresenceTrackerSensor(PresenceTrackerBaseSensor):
             elif zone == STATE_NOT_HOME:
                 persons_away.append(name)
             else:
-                persons_other.append(f"{name} ({zone})")
+                persons_other[name] = zone
 
         # Get last change
         last_change = None
         if self.tracker.history:
             last_record = self.tracker.history[-1]
             last_change = last_record.get("timestamp", "")
+
+        # Recent history (last 50 entries for the card)
+        recent_history = self.tracker.history[-50:] if self.tracker.history else []
+
+        # Data range info
+        data_range = self._get_data_range_info()
 
         return {
             "persons_home": persons_home,
@@ -121,6 +127,45 @@ class PresenceTrackerSensor(PresenceTrackerBaseSensor):
             "total_changes_recorded": len(self.tracker.history),
             "last_change": last_change,
             "csv_download_url": "/api/suivi_presence/download",
+            "recent_history": recent_history,
+            "data_range": data_range,
+        }
+
+    def _get_data_range_info(self) -> dict[str, Any]:
+        """Get information about the data range in history."""
+        if not self.tracker.history:
+            return {
+                "start_date": None,
+                "end_date": None,
+                "total_records": 0,
+                "unique_persons": [],
+                "unique_zones": [],
+            }
+
+        timestamps = []
+        persons = set()
+        zones = set()
+
+        for record in self.tracker.history:
+            ts = record.get("timestamp")
+            if ts:
+                timestamps.append(ts)
+            person = record.get("person")
+            if person:
+                persons.add(person)
+            prev_zone = record.get("previous_zone")
+            new_zone = record.get("new_zone")
+            if prev_zone:
+                zones.add(prev_zone)
+            if new_zone:
+                zones.add(new_zone)
+
+        return {
+            "start_date": min(timestamps) if timestamps else None,
+            "end_date": max(timestamps) if timestamps else None,
+            "total_records": len(self.tracker.history),
+            "unique_persons": sorted(list(persons)),
+            "unique_zones": sorted(list(zones)),
         }
 
     async def async_update(self) -> None:

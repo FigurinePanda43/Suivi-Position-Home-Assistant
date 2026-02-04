@@ -477,28 +477,29 @@ class SuiviPresenceCard extends HTMLElement {
   }
 
   _updateData() {
-    // Find sensors
+    // Find sensors - device name "Suivi de Présence" becomes "suivi_de_presence"
+    // Sensor names: "Suivi Présence", "Personnes à domicile", "Personnes absentes", "Total des changements"
     const mainSensor = Object.values(this._hass.states).find(
       (s) =>
-        s.entity_id.startsWith("sensor.suivi_presence") &&
-        s.entity_id.endsWith("_main")
+        s.entity_id.startsWith("sensor.suivi_de_presence") &&
+        s.entity_id.endsWith("_suivi_presence")
     );
 
     const personsHomeSensor = Object.values(this._hass.states).find(
       (s) =>
-        s.entity_id.startsWith("sensor.suivi_presence") &&
+        s.entity_id.startsWith("sensor.suivi_de_presence") &&
         s.entity_id.includes("personnes_a_domicile")
     );
 
     const personsAwaySensor = Object.values(this._hass.states).find(
       (s) =>
-        s.entity_id.startsWith("sensor.suivi_presence") &&
+        s.entity_id.startsWith("sensor.suivi_de_presence") &&
         s.entity_id.includes("personnes_absentes")
     );
 
     const totalChangesSensor = Object.values(this._hass.states).find(
       (s) =>
-        s.entity_id.startsWith("sensor.suivi_presence") &&
+        s.entity_id.startsWith("sensor.suivi_de_presence") &&
         s.entity_id.includes("total_des_changements")
     );
 

@@ -14,6 +14,8 @@ from datetime import datetime, timedelta
 from typing import Any
 
 import voluptuous as vol
+from aiohttp import web
+from homeassistant.components.http import HomeAssistantView
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     EVENT_HOMEASSISTANT_STARTED,
@@ -211,7 +213,7 @@ async def async_register_http_views(
     hass.http.register_view(DashboardDataView(tracker))
 
 
-class DownloadCSVView:
+class DownloadCSVView(HomeAssistantView):
     """View to handle full CSV downloads (all data)."""
 
     url = HTTP_DOWNLOAD_PATH
@@ -221,9 +223,7 @@ class DownloadCSVView:
     def __init__(self, tracker: "PresenceTracker") -> None:
         self.tracker = tracker
 
-    async def get(self, request) -> Any:
-        from aiohttp import web
-
+    async def get(self, request) -> web.Response:
         csv_content = await self.tracker.async_get_csv_content()
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"suivi_presence_complet_{timestamp}.csv"
@@ -235,7 +235,7 @@ class DownloadCSVView:
         )
 
 
-class DownloadCSVFilteredView:
+class DownloadCSVFilteredView(HomeAssistantView):
     """View to handle filtered CSV downloads."""
 
     url = HTTP_DOWNLOAD_CSV_FILTERED
@@ -245,9 +245,7 @@ class DownloadCSVFilteredView:
     def __init__(self, tracker: "PresenceTracker") -> None:
         self.tracker = tracker
 
-    async def get(self, request) -> Any:
-        from aiohttp import web
-
+    async def get(self, request) -> web.Response:
         # Get query parameters
         start_date_str = request.query.get("start_date")
         end_date_str = request.query.get("end_date")
@@ -285,7 +283,7 @@ class DownloadCSVFilteredView:
         )
 
 
-class DownloadExcelView:
+class DownloadExcelView(HomeAssistantView):
     """View to handle Excel downloads with statistics."""
 
     url = HTTP_DOWNLOAD_EXCEL
@@ -295,9 +293,7 @@ class DownloadExcelView:
     def __init__(self, tracker: "PresenceTracker") -> None:
         self.tracker = tracker
 
-    async def get(self, request) -> Any:
-        from aiohttp import web
-
+    async def get(self, request) -> web.Response:
         # Get query parameters
         start_date_str = request.query.get("start_date")
         end_date_str = request.query.get("end_date")
@@ -335,7 +331,7 @@ class DownloadExcelView:
         )
 
 
-class DashboardDataView:
+class DashboardDataView(HomeAssistantView):
     """View to handle dashboard data requests."""
 
     url = HTTP_DATA_PATH
@@ -345,8 +341,7 @@ class DashboardDataView:
     def __init__(self, tracker: "PresenceTracker") -> None:
         self.tracker = tracker
 
-    async def get(self, request) -> Any:
-        from aiohttp import web
+    async def get(self, request) -> web.Response:
         import json
 
         data = await self.tracker.async_get_dashboard_data()

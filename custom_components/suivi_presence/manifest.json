@@ -4,9 +4,9 @@
   "codeowners": ["@FigurinePanda43"],
   "config_flow": true,
   "dependencies": ["person", "zone"],
-  "documentation": "https://github.com/FigurinePanda43/Suivi-Pr-sence",
+  "documentation": "https://github.com/FigurinePanda43/Suivi-Position-Home-Assistant",
   "iot_class": "local_push",
-  "issue_tracker": "https://github.com/FigurinePanda43/Suivi-Pr-sence/issues",
+  "issue_tracker": "https://github.com/FigurinePanda43/Suivi-Position-Home-Assistant/issues",
   "requirements": ["openpyxl>=3.1.0"],
   "version": "0.1.0"
 }

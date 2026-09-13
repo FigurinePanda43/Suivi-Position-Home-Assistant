@@ -808,7 +808,17 @@ class SuiviPresenceCard extends HTMLElement {
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+        // The server answers with a JSON message when openpyxl is missing.
+        let message = `HTTP ${response.status}`;
+        try {
+          const payload = await response.json();
+          if (payload && payload.error) {
+            message = payload.error;
+          }
+        } catch (parseError) {
+          // Not a JSON body, keep the generic status message.
+        }
+        throw new Error(message);
       }
 
       const blob = await response.blob();
@@ -843,7 +853,7 @@ window.customCards.push({
 });
 
 console.info(
-  "%c SUIVI-PRESENCE-CARD %c 0.1.0 ",
+  "%c SUIVI-PRESENCE-CARD %c 0.1.1 ",
   "color: white; background: #3498db; font-weight: bold;",
   "color: #3498db; background: white; font-weight: bold;"
 );

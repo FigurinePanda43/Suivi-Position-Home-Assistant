@@ -25,6 +25,7 @@ from homeassistant.const import (
     STATE_UNKNOWN,
 )
 from homeassistant.core import Event, HomeAssistant, ServiceCall, State, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.typing import ConfigType
@@ -54,11 +55,13 @@ from .const import (
     SERVICE_EXPORT_EXCEL,
 )
 from .export import (
+    ExcelExportUnavailableError,
     export_to_csv,
     export_to_excel,
     filter_history,
     get_date_range_info,
     get_unique_persons,
+    is_excel_available,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -101,6 +104,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Initialize the presence tracker
     tracker = PresenceTracker(hass, csv_path, entry)
     hass.data[DOMAIN][entry.entry_id] = tracker
+
+    # openpyxl is optional: only the Excel export needs it. Warn once at setup
+    # instead of preventing the integration from loading.
+    if not await hass.async_add_executor_job(is_excel_available):
+        _LOGGER.warning(
+            "openpyxl n'est pas installé : l'export Excel sera indisponible "
+            "(le suivi et l'export CSV fonctionnent normalement). Pour "
+            "l'activer, installez openpyxl sur l'hôte Home Assistant puis "
+            "redémarrez"
+        )
 
     # Register static path for the Lovelace card
     await async_register_static_path(hass)
@@ -188,7 +201,10 @@ async def async_register_services(
             except ValueError:
                 _LOGGER.warning(f"Invalid end_date format: {end_date_str}")
 
-        await tracker.async_export_excel(filename, start_date, end_date, persons)
+        try:
+            await tracker.async_export_excel(filename, start_date, end_date, persons)
+        except ExcelExportUnavailableError as err:
+            raise HomeAssistantError(str(err)) from err
 
     async def handle_clear_history(call: ServiceCall) -> None:
         """Handle the clear_history service call."""
@@ -336,9 +352,13 @@ class DownloadExcelView(HomeAssistantView):
         if persons_str:
             persons = [p.strip() for p in persons_str.split(",") if p.strip()]
 
-        excel_content = await self.tracker.async_get_excel_content(
-            start_date, end_date, persons
-        )
+        try:
+            excel_content = await self.tracker.async_get_excel_content(
+                start_date, end_date, persons
+            )
+        except ExcelExportUnavailableError as err:
+            return web.json_response({"error": str(err)}, status=503)
+
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"suivi_presence_rapport_{timestamp}.xlsx"
 

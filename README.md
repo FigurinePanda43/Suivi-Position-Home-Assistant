@@ -43,6 +43,33 @@ Une intégration Home Assistant pour suivre les mouvements des personnes entre l
 2. Copiez-le dans votre dossier `config/custom_components/`
 3. Redémarrez Home Assistant
 
+### Dépendance optionnelle : openpyxl (export Excel)
+
+L'intégration n'a **aucune dépendance obligatoire**. Le suivi de présence, le
+stockage CSV permanent et l'export CSV fonctionnent tels quels.
+
+L'**export Excel** (`.xlsx`) nécessite la bibliothèque `openpyxl`. Si elle est
+absente, l'intégration démarre normalement, un avertissement est inscrit dans
+les logs, et seul le bouton/service Excel renvoie un message d'erreur explicite.
+
+Pour activer l'export Excel :
+
+- **Home Assistant OS / Supervised** : installez le module complémentaire
+  « Terminal & SSH », puis dans le conteneur Core :
+  ```bash
+  docker exec -it homeassistant pip install 'openpyxl>=3.1.0'
+  ```
+- **Home Assistant Container (Docker)** :
+  ```bash
+  docker exec -it <nom_du_conteneur> pip install 'openpyxl>=3.1.0'
+  ```
+- **Home Assistant Core (venv)** :
+  ```bash
+  source /srv/homeassistant/bin/activate && pip install 'openpyxl>=3.1.0'
+  ```
+
+Redémarrez Home Assistant après l'installation.
+
 ## Configuration
 
 ### Via l'interface (recommandé)
@@ -202,11 +229,37 @@ Vérifiez que :
 2. Consultez les logs dans **Paramètres** > **Système** > **Logs**
 3. Vérifiez que vous êtes authentifié (les endpoints requièrent l'auth)
 
+### Erreur au démarrage : « Requirements for suivi_presence not found: ['openpyxl>=3.1.0'] »
+
+Cette erreur concerne les versions ≤ 0.1.0, qui déclaraient `openpyxl` comme
+dépendance obligatoire : si Home Assistant n'arrivait pas à l'installer (hôte
+sans accès Internet, pip bloqué, miroir PyPI injoignable), **toute**
+l'intégration refusait de démarrer.
+
+Depuis la version 0.1.1, `openpyxl` est optionnel : mettez simplement
+l'intégration à jour (HACS ou copie manuelle) et redémarrez Home Assistant.
+Pour retrouver l'export Excel, voir
+[Dépendance optionnelle : openpyxl](#dépendance-optionnelle--openpyxl-export-excel).
+
+### L'export Excel renvoie une erreur / le bouton Excel échoue
+
+`openpyxl` n'est pas installé sur l'hôte Home Assistant. Suivez la section
+[Dépendance optionnelle : openpyxl](#dépendance-optionnelle--openpyxl-export-excel),
+puis redémarrez. L'export CSV reste disponible entre-temps.
+
 ### Les statistiques Excel sont incorrectes
 
 Les statistiques sont calculées sur la plage de dates sélectionnée. Pour des moyennes précises, assurez-vous d'avoir suffisamment de données historiques.
 
 ## Changelog
+
+### 0.1.1
+- **Correction** : l'intégration ne démarrait pas si Home Assistant n'arrivait
+  pas à installer `openpyxl`
+- `openpyxl` devient une dépendance **optionnelle**, requise uniquement pour
+  l'export Excel
+- Messages d'erreur explicites (service, carte Lovelace, logs) quand l'export
+  Excel est indisponible
 
 ### 0.1.0
 - **CSV permanent** comme source de données (contourne limite 10j HA)

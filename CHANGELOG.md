@@ -7,6 +7,26 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Non publié]
 
+## [0.1.1] - 2026-09-13
+
+### Corrigé
+- **L'intégration ne démarre plus si `openpyxl` est absent** : `openpyxl` était
+  déclaré dans `requirements` du manifeste, donc un échec d'installation pip
+  (hôte sans accès Internet, PyPI injoignable, environnement restreint)
+  provoquait `Setup failed for custom integration 'suivi_presence': Requirements
+  for suivi_presence not found: ['openpyxl>=3.1.0']` et bloquait tout, y compris
+  le suivi de présence et l'export CSV qui n'en ont pas besoin.
+
+### Modifié
+- `openpyxl` est désormais une **dépendance optionnelle**, importée uniquement
+  au moment de l'export Excel
+- Un avertissement est inscrit dans les logs au démarrage si `openpyxl` est absent
+- Le service `suivi_presence.export_excel` lève une `HomeAssistantError` avec la
+  marche à suivre au lieu d'une trace d'erreur
+- L'endpoint `/api/suivi_presence/download/excel` renvoie un `503` avec un
+  message JSON explicite, affiché tel quel par la carte Lovelace
+- Documentation : section d'installation d'`openpyxl` et entrées de dépannage
+
 ## [0.1.0] - 2024-XX-XX
 
 ### Ajouté

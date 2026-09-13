@@ -6,6 +6,7 @@ Handles CSV and Excel exports with filtering and statistics.
 from __future__ import annotations
 
 import csv
+import importlib.util
 import io
 import logging
 from collections import defaultdict
@@ -32,6 +33,30 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+# openpyxl is an optional dependency: it is only needed for the Excel export.
+# It is deliberately NOT declared in manifest.json's "requirements" so that a
+# failed pip install (no internet on the Home Assistant host, restricted
+# environment, ...) cannot block the whole integration from loading. Presence
+# tracking and the CSV export work without it.
+OPENPYXL_PACKAGE = "openpyxl>=3.1.0"
+
+
+class ExcelExportUnavailableError(Exception):
+    """Raised when the Excel export is requested but openpyxl is missing."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "L'export Excel nécessite la bibliothèque openpyxl, qui n'est pas "
+            "installée. Installez-la sur l'hôte Home Assistant "
+            f"(pip install '{OPENPYXL_PACKAGE}') puis redémarrez Home Assistant. "
+            "L'export CSV reste disponible sans openpyxl."
+        )
+
+
+def is_excel_available() -> bool:
+    """Return True if the Excel export can be used (openpyxl importable)."""
+    return importlib.util.find_spec("openpyxl") is not None
 
 
 def parse_duration(duration_str: str) -> timedelta | None:
@@ -316,15 +341,21 @@ def export_to_excel(
 
     Returns:
         Excel file content as bytes
+
+    Raises:
+        ExcelExportUnavailableError: if openpyxl is not installed.
     """
     try:
         from openpyxl import Workbook
         from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
         from openpyxl.utils import get_column_letter
-        from openpyxl.utils.dataframe import dataframe_to_rows
-    except ImportError:
-        _LOGGER.error("openpyxl is not installed. Please install it to use Excel export.")
-        raise
+    except ImportError as err:
+        _LOGGER.error(
+            "openpyxl is not installed, Excel export unavailable. "
+            "Install it with: pip install '%s'",
+            OPENPYXL_PACKAGE,
+        )
+        raise ExcelExportUnavailableError() from err
 
     # Filter history
     filtered = filter_history(history, start_date, end_date, persons)

@@ -1,25 +1,28 @@
-"""Sensor platform for Suivi de Présence integration."""
+"""Sensor platform: a handful of lightweight, push-updated counters.
+
+Entity names are fixed (French) on purpose: the entity ids derived from them
+(``sensor.suivi_de_presence_*``) are documented and used by the example dashboard,
+and must not depend on the Home Assistant UI language.
+
+Detailed data (history, per-zone statistics) is deliberately *not* exposed as
+entity attributes: it would be written into the recorder database on every
+change. The card fetches it through the websocket API instead.
+"""
+
 from __future__ import annotations
 
-import logging
-from datetime import datetime
 from typing import Any
 
-from homeassistant.components.sensor import (
-    SensorDeviceClass,
-    SensorEntity,
-    SensorStateClass,
-)
+from homeassistant.components.sensor import SensorEntity, SensorStateClass
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_HOME, STATE_NOT_HOME
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, VERSION
-
-_LOGGER = logging.getLogger(__name__)
+from .const import DOMAIN
+from .export import get_date_range_info
+from .tracker import PresenceTracker
 
 
 async def async_setup_entry(
@@ -27,258 +30,160 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up Suivi Présence sensors based on a config entry."""
-    tracker = hass.data[DOMAIN][entry.entry_id]
+    """Set up the sensors of a config entry."""
+    tracker: PresenceTracker = entry.runtime_data
+    version = hass.data.get(DOMAIN, {}).get("version")
+    async_add_entities(
+        [
+            PresenceTrackerSensor(entry, tracker, version),
+            PersonsHomeSensor(entry, tracker, version),
+            PersonsAwaySensor(entry, tracker, version),
+            TotalChangesSensor(entry, tracker, version),
+        ]
+    )
 
-    entities = [
-        PresenceTrackerSensor(hass, entry, tracker),
-        PersonsHomeSensor(hass, entry, tracker),
-        PersonsAwaySensor(hass, entry, tracker),
-        TotalChangesSensor(hass, entry, tracker),
-    ]
 
-    async_add_entities(entities, True)
-
-
-class PresenceTrackerBaseSensor(SensorEntity):
-    """Base class for Suivi Présence sensors."""
+class PresenceBaseSensor(SensorEntity):
+    """Common behaviour: push updates from the tracker, shared device."""
 
     _attr_has_entity_name = True
+    _attr_should_poll = False
 
     def __init__(
-        self,
-        hass: HomeAssistant,
-        entry: ConfigEntry,
-        tracker,
+        self, entry: ConfigEntry, tracker: PresenceTracker, version: str | None, suffix: str
     ) -> None:
-        """Initialize the sensor."""
-        self.hass = hass
-        self.entry = entry
         self.tracker = tracker
+        self._attr_unique_id = f"{entry.entry_id}_{suffix}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             name="Suivi de Présence",
             manufacturer="Community",
             model="Presence Tracker",
-            sw_version=VERSION,
+            sw_version=version,
+            entry_type=DeviceEntryType.SERVICE,
         )
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to tracker updates."""
+        self.async_on_remove(self.tracker.async_add_listener(self._handle_update))
+
+    @callback
+    def _handle_update(self) -> None:
+        self.async_write_ha_state()
 
     @property
     def available(self) -> bool:
-        """Return True if entity is available."""
-        return True
+        """The sensors are meaningful only once the tracker runs."""
+        return self.tracker.started
+
+    def _names_in(self, zone: str) -> list[str]:
+        return sorted(s.person for s in self.tracker.current_states if s.zone == zone)
 
 
-class PresenceTrackerSensor(PresenceTrackerBaseSensor):
-    """Main sensor showing presence tracking status."""
+class PresenceTrackerSensor(PresenceBaseSensor):
+    """Number of tracked persons, with a compact summary of who is where."""
 
     _attr_icon = "mdi:account-group"
     _attr_name = "Suivi Présence"
+    _unrecorded_attributes = frozenset({"data_range", "csv_path", "tracking"})
 
-    def __init__(
-        self,
-        hass: HomeAssistant,
-        entry: ConfigEntry,
-        tracker,
-    ) -> None:
-        """Initialize the sensor."""
-        super().__init__(hass, entry, tracker)
-        self._attr_unique_id = f"{entry.entry_id}_main"
+    def __init__(self, entry: ConfigEntry, tracker: PresenceTracker, version: str | None) -> None:
+        super().__init__(entry, tracker, version, "main")
 
     @property
     def native_value(self) -> int:
         """Return the number of tracked persons."""
-        return len(self.tracker.person_states)
+        return len(self.tracker.current_states)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return additional attributes."""
-        persons_home = []
-        persons_away = []
-        persons_other = {}
-
-        for entity_id, data in self.tracker.person_states.items():
-            name = data.get("friendly_name", entity_id)
-            zone = data.get("zone", "unknown")
-
-            if zone == STATE_HOME:
-                persons_home.append(name)
-            elif zone == STATE_NOT_HOME:
-                persons_away.append(name)
-            else:
-                persons_other[name] = zone
-
-        # Get last change
-        last_change = None
-        if self.tracker.history:
-            last_record = self.tracker.history[-1]
-            last_change = last_record.get("timestamp", "")
-
-        # Recent history (last 50 entries for the card)
-        recent_history = self.tracker.history[-50:] if self.tracker.history else []
-
-        # Data range info
-        data_range = self._get_data_range_info()
-
+        """Return a small summary (lists of names)."""
+        persons_other = {
+            s.person: s.zone
+            for s in self.tracker.current_states
+            if s.zone not in (STATE_HOME, STATE_NOT_HOME)
+        }
+        history = self.tracker.history
+        last = history[-1] if history else None
         return {
-            "persons_home": persons_home,
-            "persons_away": persons_away,
+            "persons_home": self._names_in(STATE_HOME),
+            "persons_away": self._names_in(STATE_NOT_HOME),
             "persons_in_zones": persons_other,
-            "total_changes_recorded": len(self.tracker.history),
-            "last_change": last_change,
-            "csv_download_url": "/api/suivi_presence/download",
-            "recent_history": recent_history,
-            "data_range": data_range,
+            "total_changes_recorded": len(history),
+            "last_change": last.get("timestamp") if last else None,
+            "data_range": get_date_range_info(history),
+            "csv_path": self.tracker.csv_path,
+            "tracking": self.tracker.started,
         }
 
-    def _get_data_range_info(self) -> dict[str, Any]:
-        """Get information about the data range in history."""
-        if not self.tracker.history:
-            return {
-                "start_date": None,
-                "end_date": None,
-                "total_records": 0,
-                "unique_persons": [],
-                "unique_zones": [],
-            }
 
-        timestamps = []
-        persons = set()
-        zones = set()
-
-        for record in self.tracker.history:
-            ts = record.get("timestamp")
-            if ts:
-                timestamps.append(ts)
-            person = record.get("person")
-            if person:
-                persons.add(person)
-            prev_zone = record.get("previous_zone")
-            new_zone = record.get("new_zone")
-            if prev_zone:
-                zones.add(prev_zone)
-            if new_zone:
-                zones.add(new_zone)
-
-        return {
-            "start_date": min(timestamps) if timestamps else None,
-            "end_date": max(timestamps) if timestamps else None,
-            "total_records": len(self.tracker.history),
-            "unique_persons": sorted(list(persons)),
-            "unique_zones": sorted(list(zones)),
-        }
-
-    async def async_update(self) -> None:
-        """Update the sensor."""
-        pass  # State is updated via events
-
-
-class PersonsHomeSensor(PresenceTrackerBaseSensor):
-    """Sensor showing number of persons at home."""
+class PersonsHomeSensor(PresenceBaseSensor):
+    """Number of persons at home."""
 
     _attr_icon = "mdi:home-account"
     _attr_name = "Personnes à domicile"
     _attr_state_class = SensorStateClass.MEASUREMENT
 
-    def __init__(
-        self,
-        hass: HomeAssistant,
-        entry: ConfigEntry,
-        tracker,
-    ) -> None:
-        """Initialize the sensor."""
-        super().__init__(hass, entry, tracker)
-        self._attr_unique_id = f"{entry.entry_id}_persons_home"
+    def __init__(self, entry: ConfigEntry, tracker: PresenceTracker, version: str | None) -> None:
+        super().__init__(entry, tracker, version, "persons_home")
 
     @property
     def native_value(self) -> int:
         """Return the number of persons at home."""
-        return sum(
-            1
-            for p in self.tracker.person_states.values()
-            if p.get("zone") == STATE_HOME
-        )
+        return len(self._names_in(STATE_HOME))
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return additional attributes."""
-        persons = [
-            data.get("friendly_name", entity_id)
-            for entity_id, data in self.tracker.person_states.items()
-            if data.get("zone") == STATE_HOME
-        ]
-        return {"persons": persons}
+        """Return the names."""
+        return {"persons": self._names_in(STATE_HOME)}
 
 
-class PersonsAwaySensor(PresenceTrackerBaseSensor):
-    """Sensor showing number of persons away."""
+class PersonsAwaySensor(PresenceBaseSensor):
+    """Number of persons away (outside every known zone)."""
 
     _attr_icon = "mdi:home-export-outline"
     _attr_name = "Personnes absentes"
     _attr_state_class = SensorStateClass.MEASUREMENT
 
-    def __init__(
-        self,
-        hass: HomeAssistant,
-        entry: ConfigEntry,
-        tracker,
-    ) -> None:
-        """Initialize the sensor."""
-        super().__init__(hass, entry, tracker)
-        self._attr_unique_id = f"{entry.entry_id}_persons_away"
+    def __init__(self, entry: ConfigEntry, tracker: PresenceTracker, version: str | None) -> None:
+        super().__init__(entry, tracker, version, "persons_away")
 
     @property
     def native_value(self) -> int:
         """Return the number of persons away."""
-        return sum(
-            1
-            for p in self.tracker.person_states.values()
-            if p.get("zone") == STATE_NOT_HOME
-        )
+        return len(self._names_in(STATE_NOT_HOME))
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return additional attributes."""
-        persons = [
-            data.get("friendly_name", entity_id)
-            for entity_id, data in self.tracker.person_states.items()
-            if data.get("zone") == STATE_NOT_HOME
-        ]
-        return {"persons": persons}
+        """Return the names."""
+        return {"persons": self._names_in(STATE_NOT_HOME)}
 
 
-class TotalChangesSensor(PresenceTrackerBaseSensor):
-    """Sensor showing total number of zone changes."""
+class TotalChangesSensor(PresenceBaseSensor):
+    """Total number of recorded zone changes."""
 
     _attr_icon = "mdi:counter"
     _attr_name = "Total des changements"
     _attr_state_class = SensorStateClass.TOTAL_INCREASING
 
-    def __init__(
-        self,
-        hass: HomeAssistant,
-        entry: ConfigEntry,
-        tracker,
-    ) -> None:
-        """Initialize the sensor."""
-        super().__init__(hass, entry, tracker)
-        self._attr_unique_id = f"{entry.entry_id}_total_changes"
+    def __init__(self, entry: ConfigEntry, tracker: PresenceTracker, version: str | None) -> None:
+        super().__init__(entry, tracker, version, "total_changes")
 
     @property
     def native_value(self) -> int:
-        """Return the total number of changes."""
+        """Return the number of records."""
         return len(self.tracker.history)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return additional attributes."""
-        if not self.tracker.history:
+        """Describe the last change."""
+        history = self.tracker.history
+        if not history:
             return {"last_change": None}
-
-        last_record = self.tracker.history[-1]
+        last = history[-1]
         return {
-            "last_change": last_record.get("timestamp", ""),
-            "last_person": last_record.get("person", ""),
-            "last_from_zone": last_record.get("previous_zone", ""),
-            "last_to_zone": last_record.get("new_zone", ""),
+            "last_change": last.get("timestamp"),
+            "last_person": last.get("person"),
+            "last_from_zone": last.get("previous_zone"),
+            "last_to_zone": last.get("new_zone"),
         }

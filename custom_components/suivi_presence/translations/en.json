@@ -1,66 +1,81 @@
 {
+  "title": "Presence Tracker",
   "config": {
     "step": {
       "user": {
-        "title": "Presence Tracking Configuration",
-        "description": "Configure movement tracking between zones for persons.",
+        "title": "Presence Tracker setup",
+        "description": "Every zone change of your persons is recorded in a permanent CSV file.",
         "data": {
-          "scan_interval": "Scan interval (seconds)",
-          "csv_path": "CSV file path (optional)"
+          "tracked_persons": "Persons to track",
+          "csv_path": "CSV file"
+        },
+        "data_description": {
+          "tracked_persons": "Leave empty to track every person, including persons created later.",
+          "csv_path": "Path of the data file. Default: suivi_presence_data.csv in the configuration folder."
         }
       }
     },
     "error": {
-      "invalid_path": "Invalid file path",
-      "cannot_connect": "Unable to connect"
+      "invalid_path": "The folder does not exist",
+      "not_writable": "The file or folder is not writable",
+      "not_csv": "The file must have the .csv extension"
     },
     "abort": {
-      "already_configured": "Integration is already configured"
+      "single_instance_allowed": "Already configured (only one instance is allowed)"
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Presence Tracking Options",
+        "title": "Presence Tracker options",
+        "description": "Changes apply immediately (the integration is reloaded).",
         "data": {
-          "scan_interval": "Scan interval (seconds)",
-          "tracked_persons": "Persons to track"
+          "tracked_persons": "Persons to track",
+          "csv_path": "CSV file"
+        },
+        "data_description": {
+          "tracked_persons": "Leave empty to track every person.",
+          "csv_path": "Changing the path does not move the existing file: copy it yourself if needed."
         }
       }
+    },
+    "error": {
+      "invalid_path": "The folder does not exist",
+      "not_writable": "The file or folder is not writable",
+      "not_csv": "The file must have the .csv extension"
     }
   },
   "services": {
     "export_csv": {
       "name": "Export to CSV",
-      "description": "Exports movement history to a CSV file.",
+      "description": "Writes the zone change history to a CSV file in the configuration folder, with optional filters. Returns the file path and the number of rows.",
       "fields": {
-        "filename": {
-          "name": "Filename",
-          "description": "Name of the CSV file to create (optional)"
-        }
+        "filename": { "name": "File name", "description": "Relative to the configuration folder. Timestamped automatically when empty." },
+        "start_date": { "name": "Start date", "description": "First day included (local time)." },
+        "end_date": { "name": "End date", "description": "Last day included (local time)." },
+        "persons": { "name": "Persons", "description": "Names or person.* entity ids to include. Empty = all." },
+        "delimiter": { "name": "Delimiter", "description": "Comma (standard) or semicolon (Excel with a French locale)." }
+      }
+    },
+    "export_excel": {
+      "name": "Export to Excel",
+      "description": "Writes an .xlsx workbook (Summary sheet + one sheet per person with per-zone statistics) to the configuration folder. Requires openpyxl.",
+      "fields": {
+        "filename": { "name": "File name", "description": "Relative to the configuration folder; .xlsx is appended when missing." },
+        "start_date": { "name": "Start date", "description": "First day included (local time)." },
+        "end_date": { "name": "End date", "description": "Last day included (local time)." },
+        "persons": { "name": "Persons", "description": "Names or person.* entity ids to include. Empty = all." }
       }
     },
     "clear_history": {
       "name": "Clear history",
-      "description": "Clears all recorded movement history."
+      "description": "Empties the CSV file after making a backup copy (.bak-avant-effacement-<date>). Administrators only."
     }
   },
-  "entity": {
-    "sensor": {
-      "presence_tracker": {
-        "name": "Presence tracker",
-        "state_attributes": {
-          "persons_home": {
-            "name": "Persons at home"
-          },
-          "persons_away": {
-            "name": "Persons away"
-          },
-          "last_change": {
-            "name": "Last change"
-          }
-        }
-      }
-    }
+  "exceptions": {
+    "not_loaded": { "message": "The Presence Tracker integration is not loaded." },
+    "invalid_date": { "message": "Invalid date: use YYYY-MM-DD or ISO 8601." },
+    "invalid_range": { "message": "The end date is before the start date." },
+    "invalid_path": { "message": "The file must be inside the configuration folder." }
   }
 }

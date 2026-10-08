@@ -1,148 +1,130 @@
-"""Config flow for Suivi de Présence integration."""
+"""Config flow and options flow for Suivi de Présence."""
+
 from __future__ import annotations
 
-import logging
 import os
 from typing import Any
 
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import selector
 import voluptuous as vol
 
-from homeassistant import config_entries
-from homeassistant.core import HomeAssistant, callback
-from homeassistant.data_entry_flow import FlowResult
-from homeassistant.helpers import selector
-
-from .const import (
-    CONF_CSV_PATH,
-    CONF_SCAN_INTERVAL,
-    DEFAULT_CSV_FILENAME,
-    DEFAULT_SCAN_INTERVAL,
-    DOMAIN,
-)
-
-_LOGGER = logging.getLogger(__name__)
+from .const import CONF_CSV_PATH, CONF_TRACKED_PERSONS, DEFAULT_CSV_FILENAME, DOMAIN
 
 
-def get_default_csv_path(hass: HomeAssistant) -> str:
-    """Get the default CSV path."""
-    return os.path.join(hass.config.path(), DEFAULT_CSV_FILENAME)
+def default_csv_path(hass: HomeAssistant) -> str:
+    """Return the default CSV path (inside the configuration directory)."""
+    return hass.config.path(DEFAULT_CSV_FILENAME)
 
 
-class SuiviPresenceConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for Suivi de Présence."""
+def normalise_csv_path(hass: HomeAssistant, value: str | None) -> str:
+    """Return an absolute path, defaulting to the configuration directory."""
+    path = (value or "").strip() or default_csv_path(hass)
+    if not os.path.isabs(path):
+        path = hass.config.path(path)
+    return path
+
+
+def validate_csv_path(path: str) -> str | None:
+    """Check that the CSV path can be written. Returns an error key or None.
+
+    Runs in the executor (file system access).
+    """
+    if not path.lower().endswith(".csv"):
+        return "not_csv"
+    directory = os.path.dirname(path) or "."
+    if os.path.isdir(path):
+        return "invalid_path"
+    if os.path.exists(path):
+        return None if os.access(path, os.W_OK) else "not_writable"
+    if not os.path.isdir(directory):
+        return "invalid_path"
+    return None if os.access(directory, os.W_OK) else "not_writable"
+
+
+def _schema(hass: HomeAssistant, *, include_path: bool = True) -> vol.Schema:
+    fields: dict[Any, Any] = {
+        vol.Optional(CONF_TRACKED_PERSONS, default=[]): selector.EntitySelector(
+            selector.EntitySelectorConfig(domain="person", multiple=True)
+        ),
+    }
+    if include_path:
+        fields[vol.Optional(CONF_CSV_PATH, default=default_csv_path(hass))] = (
+            selector.TextSelector()
+        )
+    return vol.Schema(fields)
+
+
+class SuiviPresenceConfigFlow(ConfigFlow, domain=DOMAIN):
+    """Handle the initial configuration."""
 
     VERSION = 1
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Handle the initial step."""
+    async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Handle the user step."""
+        if self._async_current_entries():
+            return self.async_abort(reason="single_instance_allowed")
+
         errors: dict[str, str] = {}
-
-        # Check if already configured
-        await self.async_set_unique_id(DOMAIN)
-        self._abort_if_unique_id_configured()
-
         if user_input is not None:
-            # Validate CSV path if provided
-            csv_path = user_input.get(CONF_CSV_PATH, "")
-            if csv_path:
-                # Validate the path is writable
-                try:
-                    dir_path = os.path.dirname(csv_path)
-                    if dir_path and not os.path.exists(dir_path):
-                        errors[CONF_CSV_PATH] = "invalid_path"
-                except Exception:
-                    errors[CONF_CSV_PATH] = "invalid_path"
-
-            if not errors:
+            csv_path = normalise_csv_path(self.hass, user_input.get(CONF_CSV_PATH))
+            error = await self.hass.async_add_executor_job(validate_csv_path, csv_path)
+            if error:
+                errors[CONF_CSV_PATH] = error
+            else:
                 return self.async_create_entry(
                     title="Suivi de Présence",
-                    data=user_input,
+                    data={CONF_CSV_PATH: csv_path},
+                    options={CONF_TRACKED_PERSONS: user_input.get(CONF_TRACKED_PERSONS, [])},
                 )
-
-        # Default values
-        default_csv_path = get_default_csv_path(self.hass)
-
-        data_schema = vol.Schema(
-            {
-                vol.Optional(
-                    CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL
-                ): selector.NumberSelector(
-                    selector.NumberSelectorConfig(
-                        min=5,
-                        max=300,
-                        step=5,
-                        unit_of_measurement="secondes",
-                        mode=selector.NumberSelectorMode.SLIDER,
-                    )
-                ),
-                vol.Optional(CONF_CSV_PATH, default=default_csv_path): str,
-            }
-        )
 
         return self.async_show_form(
             step_id="user",
-            data_schema=data_schema,
+            data_schema=self.add_suggested_values_to_schema(_schema(self.hass), user_input),
             errors=errors,
         )
 
     @staticmethod
     @callback
-    def async_get_options_flow(
-        config_entry: config_entries.ConfigEntry,
-    ) -> SuiviPresenceOptionsFlowHandler:
-        """Get the options flow for this handler."""
-        return SuiviPresenceOptionsFlowHandler(config_entry)
+    def async_get_options_flow(config_entry: ConfigEntry) -> SuiviPresenceOptionsFlow:
+        """Return the options flow."""
+        return SuiviPresenceOptionsFlow()
 
 
-class SuiviPresenceOptionsFlowHandler(config_entries.OptionsFlow):
-    """Handle options flow for Suivi de Présence."""
+class SuiviPresenceOptionsFlow(OptionsFlow):
+    """Let the user change the tracked persons and the CSV path."""
 
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Manage the options."""
         errors: dict[str, str] = {}
-
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
-
-        # Get current values
-        current_scan_interval = self.config_entry.options.get(
-            CONF_SCAN_INTERVAL,
-            self.config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
-        )
-
-        # Get all person entities for selection
-        persons = []
-        for state in self.hass.states.async_all("person"):
-            friendly_name = state.attributes.get("friendly_name", state.entity_id)
-            persons.append(
-                selector.SelectOptionDict(
-                    value=state.entity_id,
-                    label=friendly_name,
+            csv_path = normalise_csv_path(self.hass, user_input.get(CONF_CSV_PATH))
+            error = await self.hass.async_add_executor_job(validate_csv_path, csv_path)
+            if error:
+                errors[CONF_CSV_PATH] = error
+            else:
+                return self.async_create_entry(
+                    title="",
+                    data={
+                        CONF_TRACKED_PERSONS: user_input.get(CONF_TRACKED_PERSONS, []),
+                        CONF_CSV_PATH: csv_path,
+                    },
                 )
-            )
 
-        data_schema = vol.Schema(
-            {
-                vol.Optional(
-                    CONF_SCAN_INTERVAL, default=current_scan_interval
-                ): selector.NumberSelector(
-                    selector.NumberSelectorConfig(
-                        min=5,
-                        max=300,
-                        step=5,
-                        unit_of_measurement="secondes",
-                        mode=selector.NumberSelectorMode.SLIDER,
-                    )
-                ),
-            }
-        )
-
+        entry = self.config_entry
+        current = {
+            CONF_TRACKED_PERSONS: entry.options.get(
+                CONF_TRACKED_PERSONS, entry.data.get(CONF_TRACKED_PERSONS, [])
+            ),
+            CONF_CSV_PATH: entry.options.get(
+                CONF_CSV_PATH, entry.data.get(CONF_CSV_PATH, default_csv_path(self.hass))
+            ),
+        }
         return self.async_show_form(
             step_id="init",
-            data_schema=data_schema,
+            data_schema=self.add_suggested_values_to_schema(
+                _schema(self.hass), user_input or current
+            ),
             errors=errors,
         )

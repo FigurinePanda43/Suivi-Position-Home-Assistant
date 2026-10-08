@@ -98,7 +98,8 @@ Ce que montre la carte :
   fichier illisible), puis **une ligne par personne** : zone, « depuis 2 h 15 », « Position mise à
   jour il y a 5 min · ±25 m ». Un clic ouvre la fiche Home Assistant de la personne.
 - **Période** : Aujourd'hui · 24 h · 7 jours · 30 jours · Tout · Personnalisé, et un filtre par
-  personne. La période pilote le résumé, l'historique **et** les exports.
+  personne. La période pilote le résumé, l'historique **et** les exports ; le choix est mémorisé
+  par le navigateur.
 - **Temps par zone** : barre segmentée et légende par personne (séjour en cours inclus).
 - **Changements de zone** : « 08:32 · Jean · Maison → Travail · après 12 h 30 à Maison ».
 - **Exporter la période** : **CSV** et **Excel**. Les fichiers sont téléchargés par le navigateur
@@ -212,6 +213,12 @@ Toutes les routes exigent une authentification Home Assistant (jeton ou lien sig
 **La carte affiche « Custom element doesn't exist »** — Redémarrez Home Assistant après
 l'installation et rechargez la page (Ctrl+F5). Vérifiez qu'il ne reste pas une ancienne ressource
 manuelle pointant vers `/local/suivi_presence/…` (elle est inutile et peut être supprimée).
+
+**La carte affiche « Aucun changement de zone » / « 0 changement »** — La carte est filtrée sur la
+période sélectionnée (« Aujourd'hui » par défaut, c'est-à-dire depuis minuit). Rien n'est perdu : le
+nombre total d'enregistrements est visible dans « Détails techniques », et l'état vide rappelle le
+dernier changement enregistré. Cliquez sur « 7 jours » ou « Tout » ; la période choisie est
+mémorisée par le navigateur.
 
 **Aucune personne suivie** — Créez des entités `person` et associez-leur un traqueur. Vérifiez
 l'option *Personnes à suivre*.

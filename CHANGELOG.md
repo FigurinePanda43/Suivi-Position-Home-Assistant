@@ -51,6 +51,9 @@ bord dans `docs/REFONTE-TABLEAU-DE-BORD.md`.
   (Aujourd'hui / 24 h / 7 j / 30 j / Tout / Personnalisé), filtre par personne, **temps par
   zone** sur la période, changements de zone groupés par jour, exports CSV / Excel de la
   période, détails techniques repliés, traductions FR / EN, responsive.
+- Carte : une période sans changement l'explique (« Aucun changement depuis minuit »), rappelle le
+  dernier changement enregistré et le nombre total d'enregistrements, et propose d'élargir à 7 jours ;
+  la période choisie est mémorisée par le navigateur.
 - **API websocket** `suivi_presence/overview` et `suivi_presence/history` (période, personnes,
   résumé par zone).
 - **Statistiques par intervalles** (`stats.py`) : temps par zone exact pour n'importe quelle

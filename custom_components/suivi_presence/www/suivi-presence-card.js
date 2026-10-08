@@ -73,6 +73,11 @@ const STRINGS = {
     visits: (n) => `${n} passage${n > 1 ? "s" : ""}`,
     history_title: "Changements de zone",
     history_empty: "Aucun changement de zone sur la période.",
+    history_empty_today: (since) => `Aucun changement de zone depuis minuit (${since}).`,
+    last_change: (when, person, from, to) => `Dernier changement enregistré : ${when} — ${person}, ${from} → ${to}.`,
+    no_records_yet: "Aucun changement enregistré pour l'instant : le premier sera ajouté au prochain changement de zone.",
+    records_total: (n) => `${n} enregistrement${n > 1 ? "s" : ""} au total dans l'historique`,
+    widen_7d: "Voir les 7 derniers jours",
     history_count: (shown, total) =>
       shown < total ? `${shown} sur ${total} changements` : `${total} changement${total > 1 ? "s" : ""}`,
     show_more: "Afficher plus",
@@ -135,6 +140,11 @@ const STRINGS = {
     visits: (n) => `${n} visit${n > 1 ? "s" : ""}`,
     history_title: "Zone changes",
     history_empty: "No zone change in this period.",
+    history_empty_today: (since) => `No zone change since midnight (${since}).`,
+    last_change: (when, person, from, to) => `Last recorded change: ${when} — ${person}, ${from} → ${to}.`,
+    no_records_yet: "Nothing recorded yet: the first entry will be added on the next zone change.",
+    records_total: (n) => `${n} record${n > 1 ? "s" : ""} in the whole history`,
+    widen_7d: "Show the last 7 days",
     history_count: (shown, total) =>
       shown < total ? `${shown} of ${total} changes` : `${total} change${total > 1 ? "s" : ""}`,
     show_more: "Show more",
@@ -326,6 +336,7 @@ class SuiviPresenceCard extends HTMLElement {
     };
     this._period = this._config.default_period;
     this._limit = this._config.history_limit;
+    this._restorePeriod();
     if (this._rendered) {
       this._renderAll();
       this._loadHistory();
@@ -427,6 +438,35 @@ class SuiviPresenceCard extends HTMLElement {
     }
     this._signature = this._computeSignature();
     this._renderAll();
+  }
+
+  get _storageKey() {
+    // Includes the configured default so that changing the card config resets the memory.
+    return `suivi-presence-card:${this._config.title || ""}:${this._config.default_period}`;
+  }
+
+  _restorePeriod() {
+    try {
+      const raw = window.localStorage.getItem(this._storageKey);
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      if (PERIODS.includes(saved.period)) this._period = saved.period;
+      if (typeof saved.customStart === "string") this._customStart = saved.customStart;
+      if (typeof saved.customEnd === "string") this._customEnd = saved.customEnd;
+    } catch (err) {
+      // Private mode, storage disabled: keep the configured default.
+    }
+  }
+
+  _savePeriod() {
+    try {
+      window.localStorage.setItem(
+        this._storageKey,
+        JSON.stringify({ period: this._period, customStart: this._customStart, customEnd: this._customEnd })
+      );
+    } catch (err) {
+      // Ignore: remembering the period is a convenience only.
+    }
   }
 
   _periodBounds() {
@@ -758,7 +798,7 @@ class SuiviPresenceCard extends HTMLElement {
     if (!this._history && this._loadingHistory) {
       body = `<div class="empty small">${esc(t.loading)}</div>`;
     } else if (!this._history || this._history.records.length === 0) {
-      body = `<div class="empty small">${esc(t.history_empty)}</div>`;
+      body = this._renderEmptyHistory();
     } else {
       const records = this._history.records;
       const groups = new Map();
@@ -808,6 +848,40 @@ class SuiviPresenceCard extends HTMLElement {
         <div class="section-title">${esc(t.history_title)} <span class="muted">· ${esc(this._periodLabel())}</span></div>
         ${body}
       </div>`;
+  }
+
+  _renderEmptyHistory() {
+    // An empty period must never look like lost data: say why it is empty,
+    // recall the last recorded change and offer to widen the period.
+    const t = this._t;
+    const lang = this._lang;
+    const total = this._overview.total_records || 0;
+    const last = this._overview.last_record;
+    let reason;
+    if (this._period === "today") {
+      const midnight = new Date();
+      midnight.setHours(0, 0, 0, 0);
+      reason = t.history_empty_today(formatRelative(midnight, lang, t));
+    } else {
+      reason = t.history_empty;
+    }
+    let context;
+    if (total === 0 || !last) {
+      context = t.no_records_yet;
+    } else {
+      const when = new Date(last.timestamp);
+      const whenText = Number.isNaN(when.getTime())
+        ? String(last.timestamp)
+        : `${formatDateShort(when, lang)} ${formatTime(when, lang)}`;
+      context = `${t.last_change(whenText, last.person, this._zoneLabel(last.previous_zone), this._zoneLabel(last.new_zone))} ${t.records_total(total)}.`;
+    }
+    const widen =
+      (this._period === "today" || this._period === "24h") && total > 0
+        ? `<button class="chip small" data-action="period" data-period="7d">${esc(t.widen_7d)}</button>`
+        : "";
+    return `
+      <div class="empty small">${esc(reason)}</div>
+      <div class="hist-footer"><span class="muted">${esc(context)}</span>${widen}</div>`;
   }
 
   _renderExport() {
@@ -874,6 +948,7 @@ class SuiviPresenceCard extends HTMLElement {
         this._customEnd = localDateString(now);
         this._customStart = localDateString(new Date(now.getTime() - 6 * 86400000));
       }
+      this._savePeriod();
       this._renderPeriod();
       this._loadHistory();
     } else if (action === "person-all") {
@@ -904,6 +979,7 @@ class SuiviPresenceCard extends HTMLElement {
         [this._customStart, this._customEnd] = [this._customEnd, this._customStart];
         this._renderPeriod();
       }
+      this._savePeriod();
       this._loadHistory();
     }
   }

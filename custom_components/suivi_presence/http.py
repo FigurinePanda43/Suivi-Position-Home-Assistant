@@ -21,20 +21,13 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     CSV_DELIMITERS,
-    DOMAIN,
     HTTP_DATA_PATH,
     HTTP_DOWNLOAD_CSV_FILTERED,
     HTTP_DOWNLOAD_EXCEL,
     HTTP_DOWNLOAD_PATH,
     MAX_HISTORY_RESULTS,
 )
-from .export import (
-    ExcelExportUnavailableError,
-    export_to_csv,
-    export_to_excel,
-    filter_history,
-    get_date_range_info,
-)
+from .export import export_to_csv, export_to_excel, filter_history, get_date_range_info
 from .stats import summary_as_dict, zone_summary
 from .tracker import PresenceTracker, async_get_tracker
 from .util import parse_duration_seconds, parse_timestamp, parse_user_datetime
@@ -194,8 +187,6 @@ class DownloadExcelView(_BaseView):
                     tracker.history, tracker.current_states, start=start, end=end, persons=persons
                 )
             )
-        except ExcelExportUnavailableError as err:
-            return _json_error(503, str(err))
         except Exception:  # noqa: BLE001 - never leak a traceback to the browser
             _LOGGER.exception("Erreur lors de la génération du fichier Excel")
             return _json_error(500, "Erreur lors de la génération du fichier Excel (voir les logs)")
@@ -220,7 +211,6 @@ class DashboardDataView(_BaseView):
             start, end, persons, _ = _parse_query(request.query)
         except _InvalidQuery as err:
             return _json_error(400, str(err))
-        hass: HomeAssistant = request.app[KEY_HASS]
         limit_raw = request.query.get("limit", "200")
         try:
             limit = max(1, min(int(limit_raw), MAX_HISTORY_RESULTS))
@@ -228,7 +218,7 @@ class DashboardDataView(_BaseView):
             return _json_error(400, "Paramètre limit invalide")
         payload = {
             **tracker.overview(),
-            "excel_available": hass.data.get(DOMAIN, {}).get("excel_available", False),
+            "excel_available": True,
             "data_range": get_date_range_info(tracker.history),
             "history": build_history_payload(
                 tracker, start=start, end=end, persons=persons, limit=limit

@@ -53,7 +53,7 @@ def test_zone_summary_clips_stays_to_the_period() -> None:
     jean = summary["Jean"]
     # 00:00 -> 08:00 at home (8 h, clipped) + 18:00 -> 24:00 at home (6 h).
     assert jean["home"].seconds == pytest.approx(14 * 3600, abs=1)  # end is 23:59:59.999999
-    assert jean["home"].visits == 2  # already there at midnight + one arrival
+    assert jean["home"].visits == 2  # stay running at midnight + stay from 18:00
     assert jean["home"].ongoing is True
     assert jean["Travail"].seconds == 10 * 3600
     assert jean["Travail"].visits == 1
@@ -61,7 +61,7 @@ def test_zone_summary_clips_stays_to_the_period() -> None:
 
     marie = summary["Marie"]
     assert marie["not_home"].seconds == pytest.approx(24 * 3600, abs=1)  # clipped to the day
-    assert marie["not_home"].visits == 1  # already away at midnight
+    assert marie["not_home"].visits == 1  # one stay, running at midnight
     assert "home" not in marie  # her arrival is outside the period
 
 
@@ -70,7 +70,7 @@ def test_zone_summary_without_bounds_counts_ongoing_stay_until_now() -> None:
     jean = summary["Jean"]
     # 10 h before 08:00 + 18:00 -> now (18 h) = 28 h
     assert jean["home"].seconds == 28 * 3600
-    assert jean["home"].visits == 1  # one recorded arrival, no period start
+    assert jean["home"].visits == 2  # two distinct stays at home
 
 
 def test_zone_summary_person_filter_accepts_names_and_entity_ids() -> None:

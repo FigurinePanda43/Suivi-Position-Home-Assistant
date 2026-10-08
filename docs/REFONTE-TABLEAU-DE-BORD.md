@@ -49,7 +49,7 @@ Ce qui a été écarté :
 - **Filtre par personne** (puces), visible seulement s'il y a plusieurs personnes.
 - **Temps par zone** sur la période : barre segmentée + légende « Maison **8 h 12** · 2 passages », séjour en cours signalé. Calcul exact par intervalles, découpé à la période (voir `stats.py`).
 - **Changements de zone** groupés par jour : « 08:32 · Jean · Maison → Travail · après 12 h 30 à Maison », pagination « Afficher plus ».
-- **Exporter la période** : boutons **CSV** et **Excel**, avec le nombre de changements concernés. Excel grisé (et expliqué) si `openpyxl` manque.
+- **Exporter la période** : boutons **CSV** et **Excel**, avec le nombre de changements concernés.
 - Vue « Historique » : la même carte réglée sur 7 jours, `history-graph` sur 7 jours, `logbook` natif.
 
 ### Niveau 3 — technique (replié)
@@ -87,7 +87,7 @@ Ce qui a été écarté :
 | Puces de période / personnes | commande websocket `suivi_presence/history` avec `start`/`end`/`persons` | `tests/test_websocket.py`, test jsdom de la carte |
 | Afficher plus | même commande avec `limit` augmenté | test jsdom |
 | **CSV** | `auth/sign_path` → `/api/suivi_presence/download[/csv]?…` → `<a download>` | `tests/test_http.py::test_signed_path_download_without_token`, test jsdom (`sign_path` appelé avec le bon chemin) |
-| **Excel** | idem vers `/download/excel` ; désactivé si `openpyxl` absent | `tests/test_http.py::test_excel_download_is_a_real_workbook` (classeur rechargé avec openpyxl), `test_excel_unavailable_returns_503_json` |
+| **Excel** | idem vers `/download/excel` ; classeur généré sans dépendance (`xlsx_writer.py`) | `tests/test_http.py::test_excel_download_is_a_real_workbook` (classeur rechargé avec openpyxl), `tests/test_export.py::test_xlsx_package_is_well_formed` |
 | Dates personnalisées | `change` sur `<input type=date>` ; inversion automatique si fin < début | test jsdom |
 
 Il ne reste **aucun bouton** dont l'action n'est pas branchée.
@@ -108,7 +108,7 @@ Il ne reste **aucun bouton** dont l'action n'est pas branchée.
 | Documentation | 6 | 8 | README réécrit sur le comportement réel, CHANGELOG daté, notes de migration |
 | Fonctionnalités | 4 | 8 | Tout ce qui est annoncé est testé |
 | Interface | 4 | 8 | Trois niveaux, carte géographique, aucun bouton mort — **rendu réel à valider à l'écran** |
-| Tests | 0 | 8 | 74 tests Python sur un Home Assistant réel + test jsdom de la carte ; pas de test navigateur réel |
+| Tests | 0 | 8 | 74 tests Python sur un Home Assistant réel (dont ouverture du classeur Excel par LibreOffice) + test jsdom de la carte ; pas de test navigateur réel |
 | Distribution HACS | 5 | 9 | `hacs.json` corrigé, `.pyc` retirés, CI hassfest + HACS |
 
 **Moyenne : 8,1 / 10 — GO conditionnel** (validation visuelle et mobile par le mainteneur avant le tag, voir l'audit §6).
@@ -119,5 +119,5 @@ Il ne reste **aucun bouton** dont l'action n'est pas branchée.
 
 - **Pas de vitesse, distance ni trajet long terme** : l'intégration ne stocke pas de coordonnées. Le trajet affiché par la carte `map` vient du recorder (quelques jours). Ajouter des colonnes GPS au CSV serait possible (format append-only) mais n'a pas été fait : hors périmètre d'un suivi de présence par zones, et impact vie privée à discuter.
 - **Horodatage des changements manqués pendant un arrêt** : daté au redémarrage (meilleure estimation disponible), signalé dans les logs.
-- **Statistiques** : « visites » = arrivées dans la zone pendant la période (+1 si la personne y était déjà au début) ; moyennes = total / nombre de jours de la période.
-- **Export Excel** : nécessite `openpyxl` sur l'hôte (choix de la 0.1.1, conservé : un échec `pip` ne doit jamais empêcher le suivi de démarrer).
+- **Statistiques** : « visites » = nombre de séjours dans la zone recoupant la période (un séjour déjà en cours au début compte pour un) ; moyennes = total / nombre de jours de la période.
+- **Export Excel** : écrit par l'intégration (OOXML minimal : feuilles, styles, dates, durées, filtres, volets). Pas de graphiques ni de formules, ce qui n'est pas nécessaire ici ; validé dans les tests par relecture avec openpyxl et par une conversion LibreOffice headless ; **à ouvrir une fois dans Microsoft Excel** pour confirmation.

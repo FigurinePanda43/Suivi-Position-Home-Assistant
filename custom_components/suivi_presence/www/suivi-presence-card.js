@@ -14,7 +14,7 @@
  *   persons: [person.jean]            # limiter l'affichage à ces personnes
  *   show_summary: true                # temps par zone sur la période
  *   show_history: true                # liste des changements de zone
- *   show_export: true                 # boutons CSV / Excel
+ *   show_export: true                 # boutons CSV / Excel (juste sous les filtres)
  *   show_details: true                # bloc « Détails techniques » replié
  *   history_limit: 50                 # lignes affichées avant « Afficher plus »
  *   stale_after_minutes: 120          # position GPS considérée ancienne au-delà
@@ -533,9 +533,9 @@ class SuiviPresenceCard extends HTMLElement {
           <div id="alerts"></div>
           <div id="persons"></div>
           <div id="period"></div>
+          <div id="export"></div>
           <div id="summary"></div>
           <div id="history"></div>
-          <div id="export"></div>
           <div id="details"></div>
         </div>
       </ha-card>
@@ -1103,9 +1103,10 @@ class SuiviPresenceCard extends HTMLElement {
       .arrow { color: var(--secondary-text-color); --mdc-icon-size: 18px; }
       .hist-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.8rem; padding-top: 4px; }
 
-      .export { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--divider-color, rgba(0,0,0,0.08)); padding-top: 12px; }
+      .export { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding-bottom: 12px; border-bottom: 1px solid var(--divider-color, rgba(0,0,0,0.08)); }
       .export-label { font-weight: 500; font-size: 0.95rem; }
-      .export-buttons { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; font-size: 0.8rem; }
+      .export-buttons { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; font-size: 0.8rem; margin-left: auto; }
+      .export .small-text { flex-basis: 100%; }
       .btn { display: inline-flex; align-items: center; gap: 6px; border: none; border-radius: 8px; padding: 8px 14px; font: inherit; font-size: 0.85rem; font-weight: 500; cursor: pointer; background: var(--primary-color); color: var(--text-primary-color, #fff); }
       .btn.excel { background: #217346; color: #fff; }
       .btn:disabled { opacity: 0.45; cursor: not-allowed; }
@@ -1125,7 +1126,8 @@ class SuiviPresenceCard extends HTMLElement {
         .person-row { flex-direction: column; align-items: flex-start; gap: 2px; }
         .person-row.sub { flex-direction: column; }
         .hist-person { min-width: 0; }
-        .export-buttons { justify-content: stretch; }
+        .export-label { flex-basis: 100%; }
+        .export-buttons { justify-content: stretch; width: 100%; }
         .export-buttons .btn { flex: 1; justify-content: center; }
       }
     `;

@@ -171,7 +171,9 @@ assert.match(hist, /2 sur 3 changements/);
 assert.ok(root.querySelector('[data-action="more"]'), "show more button");
 assert.equal(root.querySelectorAll(".hist-row").length, 2);
 
-// Export bar and details.
+// Export bar sits right under the filters (before summary/history), then details.
+const order = [...root.querySelectorAll(".card-content > div")].map((d) => d.id);
+assert.deepEqual([...order], ["header", "alerts", "persons", "period", "export", "summary", "history", "details"]);
 assert.match(text(root.getElementById("export")), /Exporter la période · Aujourd'hui/);
 assert.equal(root.querySelector('[data-kind="excel"]').disabled, false);
 assert.match(text(root.getElementById("details")), /suivi_presence_data\.csv/);

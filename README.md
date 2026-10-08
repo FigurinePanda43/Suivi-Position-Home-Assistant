@@ -131,7 +131,8 @@ exportées telles quelles.
 Un vrai classeur `.xlsx`, généré par l'intégration **sans aucune dépendance** à installer :
 
 - feuille **Résumé** : pour chaque personne et chaque zone, temps total, moyenne par jour, nombre
-  de passages, première et dernière arrivée, séjour en cours ;
+  de passages, **moyenne par visite** (durée moyenne d'un séjour), première et dernière arrivée,
+  séjour en cours ;
 - **une feuille par personne** : mêmes statistiques, puis la liste des changements de zone.
 
 Les dates sont de vraies dates Excel, les durées sont au format `[h]:mm:ss` (triables, sommables),
@@ -192,7 +193,7 @@ Toutes les routes exigent une authentification Home Assistant (jeton ou lien sig
 | `GET /api/suivi_presence/download/excel?start_date=…&end_date=…&persons=…` | Excel |
 | `GET /api/suivi_presence/data?start_date=…&end_date=…&persons=…&limit=200` | JSON : état des personnes, historique, résumé par zone |
 | WebSocket `suivi_presence/overview` | État courant des personnes |
-| WebSocket `suivi_presence/history` (`start`, `end`, `persons`, `limit`) | Changements et résumé par zone d'une période |
+| WebSocket `suivi_presence/history` (`start`, `end`, `persons`, `limit`) | Changements et résumé par zone d'une période (`seconds`, `visits`, `average_visit_seconds`, `first`, `last`, `ongoing`) |
 
 ## Comportement à connaître
 

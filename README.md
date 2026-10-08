@@ -100,11 +100,11 @@ Ce que montre la carte :
 - **Période** : Aujourd'hui · 24 h · 7 jours · 30 jours · Tout · Personnalisé, et un filtre par
   personne. La période pilote le résumé, l'historique **et** les exports ; le choix est mémorisé
   par le navigateur.
+- **Exporter la période**, juste sous les filtres : **CSV** et **Excel** de la période et des
+  personnes sélectionnées. Les fichiers sont téléchargés par le navigateur ou l'application
+  compagnon via un lien signé Home Assistant — rien à récupérer dans le dossier de configuration.
 - **Temps par zone** : barre segmentée et légende par personne (séjour en cours inclus).
 - **Changements de zone** : « 08:32 · Jean · Maison → Travail · après 12 h 30 à Maison ».
-- **Exporter la période** : **CSV** et **Excel**. Les fichiers sont téléchargés par le navigateur
-  ou l'application compagnon via un lien signé Home Assistant — rien à récupérer dans le dossier
-  de configuration.
 
 ## Exports
 

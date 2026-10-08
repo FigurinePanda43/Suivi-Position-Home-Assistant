@@ -1,89 +1,144 @@
-# Exemple de configuration du tableau de bord Lovelace pour Suivi de Présence
-# Version: 0.1.0
+# Tableau de bord « Présence » — Suivi de Présence 1.0.0
 #
-# Instructions:
-# 1. Ajoutez la ressource JavaScript dans la configuration Lovelace:
-#    Allez dans Configuration > Tableaux de bord > Ressources (en haut à droite)
-#    Puis ajoutez:
-#      URL: /local/suivi_presence/suivi-presence-card.js
-#      Type: Module JavaScript
+# Prérequis : l'intégration est installée et configurée. La carte
+# `custom:suivi-presence-card` est chargée automatiquement par l'intégration :
+# il n'y a AUCUNE ressource Lovelace à déclarer à la main.
 #
-# 2. Copiez cette configuration dans votre tableau de bord
+# Installation :
+#   Paramètres → Tableaux de bord → Ajouter un tableau de bord → « Nouveau tableau
+#   de bord à partir de zéro » → ouvrir → ⋮ → Éditeur brut → coller ce fichier.
 #
-# Note: Les entity_id sont générés automatiquement par Home Assistant.
-# Le format est: sensor.suivi_de_presence_<nom_du_capteur>
+# Remplacez person.jean / person.marie par vos propres entités person.* dans les
+# cartes natives `map`, `history-graph` et `logbook` (la carte personnalisée les
+# découvre toute seule).
+#
+# Aucune carte HACS supplémentaire n'est nécessaire : tout ce qui n'est pas la
+# carte personnalisée est une carte native de Home Assistant.
 
-title: Suivi de Présence
+title: Présence
 views:
+  # ---------------------------------------------------------------------------
+  # Vue 1 — Niveau 1 et 2 : qui est où, depuis quand, carte, déplacements.
+  # ---------------------------------------------------------------------------
   - title: Présence
-    icon: mdi:account-group
     path: presence
-    cards:
-      # Carte personnalisée Suivi de Présence (recommandée)
-      # Inclut les boutons de téléchargement CSV/Excel avec filtres
-      - type: custom:suivi-presence-card
-        title: Suivi des Présences
-        show_history: true
-        history_count: 10
+    icon: mdi:account-group
+    type: sections
+    max_columns: 2
+    sections:
+      - type: grid
+        cards:
+          # Niveau 1 : position courante de chaque personne, fraîcheur des données,
+          # alertes ; niveau 2 : résumé par zone et déplacements de la période ;
+          # exports CSV / Excel de la période affichée.
+          - type: custom:suivi-presence-card
+            title: Suivi de Présence
+            default_period: today
+            show_summary: true
+            show_history: true
+            show_export: true
+            history_limit: 30
 
-      # Ou utilisez les entités standard
-      - type: entities
-        title: Statut des Présences
-        entities:
-          - entity: sensor.suivi_de_presence_suivi_presence
-            name: Total personnes suivies
-          - entity: sensor.suivi_de_presence_personnes_a_domicile
-            name: À domicile
-          - entity: sensor.suivi_de_presence_personnes_absentes
-            name: Absents
-          - entity: sensor.suivi_de_presence_total_des_changements
-            name: Changements enregistrés
+      - type: grid
+        cards:
+          # Carte géographique native : position actuelle (cercle de précision GPS)
+          # et trajet des dernières heures depuis l'historique du recorder.
+          - type: map
+            title: Positions
+            entities:
+              - person.jean
+              - person.marie
+            hours_to_show: 12
+            auto_fit: true
+            theme_mode: auto
+            grid_options:
+              rows: 6
+              columns: full
 
-      # Carte de statistiques
-      - type: statistics-graph
-        title: Évolution des changements
-        entities:
-          - entity: sensor.suivi_de_presence_total_des_changements
-        stat_types:
-          - change
-        days_to_show: 7
+          # Frise des zones par personne : lecture immédiate des allers-retours
+          # du jour (natif, pas de dépendance).
+          - type: history-graph
+            title: Zones — dernières 24 h
+            hours_to_show: 24
+            entities:
+              - entity: person.jean
+              - entity: person.marie
 
-      # Historique graphique
-      - type: history-graph
-        title: Historique des présences (24h)
-        hours_to_show: 24
-        entities:
-          - entity: sensor.suivi_de_presence_personnes_a_domicile
-          - entity: sensor.suivi_de_presence_personnes_absentes
+  # ---------------------------------------------------------------------------
+  # Vue 2 — Historique long : la carte en mode « analyse » (7 jours par défaut)
+  # et le journal natif des changements de zone.
+  # ---------------------------------------------------------------------------
+  - title: Historique
+    path: historique
+    icon: mdi:history
+    type: sections
+    max_columns: 2
+    sections:
+      - type: grid
+        cards:
+          - type: custom:suivi-presence-card
+            title: Analyse de la période
+            default_period: 7d
+            show_summary: true
+            show_history: true
+            show_export: true
+            history_limit: 100
 
-      # Carte markdown avec instructions
-      - type: markdown
-        title: Instructions
-        content: |
-          ## Utilisation
+      - type: grid
+        cards:
+          - type: history-graph
+            title: Zones — 7 derniers jours
+            hours_to_show: 168
+            entities:
+              - entity: person.jean
+              - entity: person.marie
+          - type: logbook
+            title: Journal des déplacements
+            hours_to_show: 72
+            entities:
+              - person.jean
+              - person.marie
 
-          ### Téléchargements
-          Utilisez les boutons **CSV** et **Excel** dans la carte principale.
-          Vous pouvez filtrer par date et par personne avant l'export.
-
-          ### Export Excel
-          Le fichier Excel contient:
-          - **Une feuille par personne** avec ses données et statistiques
-          - Temps total par zone
-          - Moyennes journalière, hebdomadaire et mensuelle
-          - Fréquence des visites par zone
-
-          ### Services disponibles
-          - `suivi_presence.export_csv` : Exporter CSV filtré
-          - `suivi_presence.export_excel` : Exporter Excel avec statistiques
-          - `suivi_presence.clear_history` : Effacer l'historique (attention!)
-
-          ### Format du CSV
-          | Colonne | Description |
-          |---------|-------------|
-          | timestamp | Date et heure ISO 8601 |
-          | person | Nom de la personne |
-          | previous_zone | Zone de départ |
-          | new_zone | Zone d'arrivée |
-          | duration_in_previous | Durée lisible (ex: 2h 30m) |
-          | duration_seconds | Durée en secondes |
+  # ---------------------------------------------------------------------------
+  # Vue 3 — Niveau 3 : informations techniques, rarement consultées.
+  # ---------------------------------------------------------------------------
+  - title: Technique
+    path: technique
+    icon: mdi:cog-outline
+    type: sections
+    max_columns: 1
+    sections:
+      - type: grid
+        cards:
+          - type: entities
+            title: Capteurs de l'intégration
+            state_color: true
+            entities:
+              - entity: sensor.suivi_de_presence_suivi_presence
+                name: Personnes suivies
+              - entity: sensor.suivi_de_presence_personnes_a_domicile
+                name: À domicile
+              - entity: sensor.suivi_de_presence_personnes_absentes
+                name: Absents
+              - entity: sensor.suivi_de_presence_total_des_changements
+                name: Changements enregistrés
+              - type: attribute
+                entity: sensor.suivi_de_presence_suivi_presence
+                attribute: csv_path
+                name: Fichier CSV
+                icon: mdi:file-delimited-outline
+              - type: attribute
+                entity: sensor.suivi_de_presence_total_des_changements
+                attribute: last_change
+                name: Dernier changement enregistré
+                icon: mdi:clock-outline
+          - type: statistics-graph
+            title: Changements de zone par jour
+            chart_type: bar
+            period: day
+            days_to_show: 30
+            stat_types:
+              - change
+            entities:
+              - entity: sensor.suivi_de_presence_total_des_changements
+                name: Changements

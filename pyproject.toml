@@ -1,0 +1,23 @@
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+norecursedirs = [".git", "custom_components", "examples", "docs"]
+addopts = "-p no:cacheprovider -q"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::pytest.PytestUnraisableExceptionWarning",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = ["tests/testing_config"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "G", "LOG"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+force-sort-within-sections = true
+known-first-party = ["custom_components.suivi_presence"]
+combine-as-imports = true

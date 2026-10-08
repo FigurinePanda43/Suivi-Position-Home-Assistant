@@ -1,859 +1,1074 @@
 /**
- * Suivi de Présence - Custom Lovelace Card
- * Version: 0.1.0
+ * Suivi de Présence — carte Lovelace
+ * Version 1.0.0
  *
- * This card displays presence tracking information and provides
- * download buttons for CSV and Excel exports with filtering options.
+ * Chargée automatiquement par l'intégration (aucune ressource à déclarer).
+ * Sans dépendance : JavaScript natif, API websocket de l'intégration,
+ * téléchargements par chemins signés Home Assistant (compatibles navigateur
+ * et applications compagnon).
+ *
+ * Configuration (toutes les clés sont optionnelles) :
+ *   type: custom:suivi-presence-card
+ *   title: Suivi de Présence          # false pour masquer l'en-tête
+ *   default_period: today             # today | 24h | 7d | 30d | all
+ *   persons: [person.jean]            # limiter l'affichage à ces personnes
+ *   show_summary: true                # temps par zone sur la période
+ *   show_history: true                # liste des changements de zone
+ *   show_export: true                 # boutons CSV / Excel
+ *   show_details: true                # bloc « Détails techniques » replié
+ *   history_limit: 50                 # lignes affichées avant « Afficher plus »
+ *   stale_after_minutes: 120          # position GPS considérée ancienne au-delà
  */
+
+const CARD_VERSION = "1.0.0";
+const CARD_TAG = "suivi-presence-card";
+
+const WS_OVERVIEW = "suivi_presence/overview";
+const WS_HISTORY = "suivi_presence/history";
+const URL_CSV_FULL = "/api/suivi_presence/download";
+const URL_CSV = "/api/suivi_presence/download/csv";
+const URL_EXCEL = "/api/suivi_presence/download/excel";
+
+const PERIODS = ["today", "24h", "7d", "30d", "all", "custom"];
+
+const STRINGS = {
+  fr: {
+    title: "Suivi de Présence",
+    tracking_on: "Suivi actif",
+    tracking_off: "Suivi inactif",
+    persons_count: (n) => `${n} personne${n > 1 ? "s" : ""}`,
+    no_persons:
+      "Aucune personne suivie. Créez des entités « person » avec un traqueur d'appareil, puis vérifiez les options de l'intégration.",
+    not_loaded: "L'intégration Suivi de Présence n'est pas chargée.",
+    loading: "Chargement…",
+    home: "Maison",
+    away: "Absent",
+    unknown: "Inconnu",
+    unavailable: "Indisponible",
+    since: (d) => `depuis ${d}`,
+    since_unknown: "durée inconnue",
+    gps_updated: (rel) => `Position mise à jour ${rel}`,
+    gps_accuracy: (m) => `±${m} m`,
+    gps_none: "Pas de position GPS",
+    gps_stale: "Position ancienne",
+    alerts_title: "À vérifier",
+    alert_unavailable: (name) => `${name} : traqueur indisponible, dernière zone connue affichée.`,
+    alert_stale: (name, rel) => `${name} : position GPS non mise à jour ${rel}.`,
+    alert_load_error: (msg) => `Fichier CSV : ${msg}`,
+    alert_excel: "Export Excel indisponible : openpyxl n'est pas installé sur l'hôte Home Assistant.",
+    period: "Période",
+    p_today: "Aujourd'hui",
+    p_24h: "24 h",
+    p_7d: "7 jours",
+    p_30d: "30 jours",
+    p_all: "Tout",
+    p_custom: "Personnalisé",
+    from: "Du",
+    to: "au",
+    filter_persons: "Personnes",
+    all_persons: "Toutes",
+    summary_title: "Temps par zone",
+    summary_empty: "Aucune donnée sur la période.",
+    ongoing: "en cours",
+    visits: (n) => `${n} passage${n > 1 ? "s" : ""}`,
+    history_title: "Changements de zone",
+    history_empty: "Aucun changement de zone sur la période.",
+    history_count: (shown, total) =>
+      shown < total ? `${shown} sur ${total} changements` : `${total} changement${total > 1 ? "s" : ""}`,
+    show_more: "Afficher plus",
+    after: (d, zone) => `après ${d} à ${zone}`,
+    export_title: "Exporter la période",
+    export_csv: "CSV",
+    export_excel: "Excel",
+    export_started: "Téléchargement démarré",
+    export_failed: (m) => `Échec du téléchargement : ${m}`,
+    export_excel_disabled: "openpyxl manquant sur l'hôte Home Assistant",
+    details: "Détails techniques",
+    d_csv: "Fichier CSV",
+    d_records: "Enregistrements",
+    d_range: "Données disponibles",
+    d_version: "Version",
+    d_services: "Services",
+    today_label: "Aujourd'hui",
+    yesterday_label: "Hier",
+    now: "à l'instant",
+    error_generic: "Erreur",
+  },
+  en: {
+    title: "Presence Tracker",
+    tracking_on: "Tracking active",
+    tracking_off: "Tracking inactive",
+    persons_count: (n) => `${n} person${n > 1 ? "s" : ""}`,
+    no_persons:
+      "No tracked person. Create “person” entities with a device tracker, then check the integration options.",
+    not_loaded: "The Presence Tracker integration is not loaded.",
+    loading: "Loading…",
+    home: "Home",
+    away: "Away",
+    unknown: "Unknown",
+    unavailable: "Unavailable",
+    since: (d) => `for ${d}`,
+    since_unknown: "unknown duration",
+    gps_updated: (rel) => `Position updated ${rel}`,
+    gps_accuracy: (m) => `±${m} m`,
+    gps_none: "No GPS position",
+    gps_stale: "Stale position",
+    alerts_title: "Needs attention",
+    alert_unavailable: (name) => `${name}: tracker unavailable, last known zone shown.`,
+    alert_stale: (name, rel) => `${name}: GPS position not updated ${rel}.`,
+    alert_load_error: (msg) => `CSV file: ${msg}`,
+    alert_excel: "Excel export unavailable: openpyxl is not installed on the Home Assistant host.",
+    period: "Period",
+    p_today: "Today",
+    p_24h: "24 h",
+    p_7d: "7 days",
+    p_30d: "30 days",
+    p_all: "All",
+    p_custom: "Custom",
+    from: "From",
+    to: "to",
+    filter_persons: "Persons",
+    all_persons: "All",
+    summary_title: "Time per zone",
+    summary_empty: "No data for this period.",
+    ongoing: "ongoing",
+    visits: (n) => `${n} visit${n > 1 ? "s" : ""}`,
+    history_title: "Zone changes",
+    history_empty: "No zone change in this period.",
+    history_count: (shown, total) =>
+      shown < total ? `${shown} of ${total} changes` : `${total} change${total > 1 ? "s" : ""}`,
+    show_more: "Show more",
+    after: (d, zone) => `after ${d} at ${zone}`,
+    export_title: "Export this period",
+    export_csv: "CSV",
+    export_excel: "Excel",
+    export_started: "Download started",
+    export_failed: (m) => `Download failed: ${m}`,
+    export_excel_disabled: "openpyxl missing on the Home Assistant host",
+    details: "Technical details",
+    d_csv: "CSV file",
+    d_records: "Records",
+    d_range: "Available data",
+    d_version: "Version",
+    d_services: "Services",
+    today_label: "Today",
+    yesterday_label: "Yesterday",
+    now: "just now",
+    error_generic: "Error",
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const esc = (value) =>
+  String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+const pad2 = (n) => String(n).padStart(2, "0");
+
+const localDateString = (date) => `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+
+const toIsoWithOffset = (date) => {
+  const offset = -date.getTimezoneOffset();
+  const sign = offset >= 0 ? "+" : "-";
+  const abs = Math.abs(offset);
+  return (
+    `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}` +
+    `T${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}` +
+    `${sign}${pad2(Math.floor(abs / 60))}:${pad2(abs % 60)}`
+  );
+};
+
+function formatDuration(seconds, lang) {
+  if (seconds === null || seconds === undefined || Number.isNaN(seconds) || seconds < 0) return "—";
+  const total = Math.round(seconds);
+  const days = Math.floor(total / 86400);
+  const hours = Math.floor((total % 86400) / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const d = lang === "fr" ? "j" : "d";
+  if (days > 0) return `${days} ${d} ${hours} h`;
+  if (hours > 0) return `${hours} h ${pad2(minutes)}`;
+  if (minutes > 0) return `${minutes} min`;
+  return `${total} s`;
+}
+
+function formatRelative(date, lang, strings) {
+  if (!date || Number.isNaN(date.getTime())) return "";
+  const diff = (date.getTime() - Date.now()) / 1000;
+  const abs = Math.abs(diff);
+  if (abs < 45) return strings.now;
+  let value;
+  let unit;
+  if (abs < 3600) {
+    value = Math.round(diff / 60);
+    unit = "minute";
+  } else if (abs < 86400) {
+    value = Math.round(diff / 3600);
+    unit = "hour";
+  } else {
+    value = Math.round(diff / 86400);
+    unit = "day";
+  }
+  try {
+    return new Intl.RelativeTimeFormat(lang, { numeric: "auto" }).format(value, unit);
+  } catch (err) {
+    return `${Math.abs(value)} ${unit}`;
+  }
+}
+
+function formatTime(date, lang) {
+  try {
+    return new Intl.DateTimeFormat(lang, { hour: "2-digit", minute: "2-digit" }).format(date);
+  } catch (err) {
+    return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+  }
+}
+
+function formatDateLong(date, lang) {
+  try {
+    return new Intl.DateTimeFormat(lang, { weekday: "long", day: "numeric", month: "long" }).format(date);
+  } catch (err) {
+    return localDateString(date);
+  }
+}
+
+function formatDateShort(date, lang) {
+  try {
+    return new Intl.DateTimeFormat(lang, { day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
+  } catch (err) {
+    return localDateString(date);
+  }
+}
+
+function zoneClass(zone) {
+  if (zone === "home") return "home";
+  if (zone === "not_home") return "away";
+  if (zone === "unknown" || zone === "unavailable" || !zone) return "unknown";
+  return "zone";
+}
+
+function initials(name) {
+  return String(name || "?")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0].toUpperCase())
+    .join("");
+}
+
+// ---------------------------------------------------------------------------
+// Card
+// ---------------------------------------------------------------------------
 
 class SuiviPresenceCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
-    this._filterOpen = false;
-    this._startDate = "";
-    this._endDate = "";
-    this._selectedPersons = [];
+    this._config = {};
+    this._hass = null;
+    this._overview = null;
+    this._history = null;
+    this._period = "today";
+    this._customStart = "";
+    this._customEnd = "";
+    this._selectedPersons = new Set();
+    this._limit = 50;
+    this._loadingHistory = false;
+    this._error = null;
+    this._signature = "";
+    this._refreshTimer = null;
+    this._clockTimer = null;
+    this._historyRequest = 0;
   }
 
-  set hass(hass) {
-    this._hass = hass;
-    if (!this._rendered) {
-      this.render();
-      this._rendered = true;
-    } else {
-      this._updateData();
-    }
-  }
-
-  setConfig(config) {
-    this._config = config;
-  }
-
-  getCardSize() {
-    return 5;
-  }
-
-  static getConfigElement() {
-    return document.createElement("suivi-presence-card-editor");
-  }
+  // --- Lovelace API ---------------------------------------------------------
 
   static getStubConfig() {
     return {
       title: "Suivi de Présence",
+      default_period: "today",
+      show_summary: true,
       show_history: true,
-      history_count: 10,
+      show_export: true,
+      history_limit: 30,
     };
   }
 
-  render() {
+  getCardSize() {
+    return 8;
+  }
+
+  getGridOptions() {
+    return { columns: 12, min_columns: 6, rows: "auto" };
+  }
+
+  setConfig(config) {
+    const period = config.default_period || "today";
+    if (!PERIODS.includes(period) || period === "custom") {
+      if (period !== "custom") {
+        throw new Error(`default_period doit valoir today, 24h, 7d, 30d ou all (reçu : ${period})`);
+      }
+    }
+    if (config.persons && !Array.isArray(config.persons)) {
+      throw new Error("persons doit être une liste d'entités person.*");
+    }
+    this._config = {
+      title: config.title === undefined ? null : config.title,
+      default_period: period,
+      persons: config.persons || null,
+      show_summary: config.show_summary !== false,
+      show_history: config.show_history !== false,
+      show_export: config.show_export !== false,
+      show_details: config.show_details !== false,
+      history_limit: Number(config.history_limit) > 0 ? Number(config.history_limit) : 50,
+      stale_after_minutes: Number(config.stale_after_minutes) > 0 ? Number(config.stale_after_minutes) : 120,
+    };
+    this._period = this._config.default_period;
+    this._limit = this._config.history_limit;
+    if (this._rendered) {
+      this._renderAll();
+      this._loadHistory();
+    }
+  }
+
+  set hass(hass) {
+    const first = !this._hass;
+    this._hass = hass;
+    if (!this._rendered) {
+      this._renderShell();
+      this._rendered = true;
+    }
+    if (first) {
+      this._loadOverview().then(() => this._loadHistory());
+      return;
+    }
+    // Only react to changes of the entities we care about.
+    const signature = this._computeSignature();
+    if (signature !== this._signature) {
+      this._signature = signature;
+      this._scheduleRefresh();
+    }
+  }
+
+  connectedCallback() {
+    if (!this._clockTimer) {
+      this._clockTimer = setInterval(() => {
+        if (this._overview) this._renderPersons();
+      }, 60000);
+    }
+  }
+
+  disconnectedCallback() {
+    if (this._clockTimer) {
+      clearInterval(this._clockTimer);
+      this._clockTimer = null;
+    }
+    if (this._refreshTimer) {
+      clearTimeout(this._refreshTimer);
+      this._refreshTimer = null;
+    }
+  }
+
+  // --- Data -------------------------------------------------------------------
+
+  get _lang() {
+    const language = (this._hass && (this._hass.locale?.language || this._hass.language)) || "fr";
+    return language.toLowerCase().startsWith("fr") ? "fr" : "en";
+  }
+
+  get _t() {
+    return STRINGS[this._lang];
+  }
+
+  _computeSignature() {
+    if (!this._hass) return "";
+    const parts = [];
+    const persons = this._overview?.persons || [];
+    for (const person of persons) {
+      const state = this._hass.states[person.entity_id];
+      if (state) parts.push(`${person.entity_id}:${state.state}:${state.last_updated}`);
+    }
+    const sensors = Object.values(this._hass.entities || {}).filter(
+      (entry) => entry.platform === "suivi_presence"
+    );
+    for (const entry of sensors) {
+      const state = this._hass.states[entry.entity_id];
+      if (state) parts.push(`${entry.entity_id}:${state.state}`);
+    }
+    return parts.join("|");
+  }
+
+  _scheduleRefresh() {
+    if (this._refreshTimer) clearTimeout(this._refreshTimer);
+    this._refreshTimer = setTimeout(async () => {
+      this._refreshTimer = null;
+      const before = this._overview?.total_records;
+      await this._loadOverview();
+      if (this._overview && this._overview.total_records !== before) {
+        this._loadHistory();
+      }
+    }, 400);
+  }
+
+  async _loadOverview() {
     if (!this._hass) return;
+    try {
+      const data = await this._hass.callWS({ type: WS_OVERVIEW });
+      if (this._config.persons) {
+        const allowed = new Set(this._config.persons);
+        data.persons = (data.persons || []).filter((p) => allowed.has(p.entity_id));
+      }
+      this._overview = data;
+      this._error = null;
+    } catch (err) {
+      this._overview = null;
+      this._error = err && err.code === "not_loaded" ? this._t.not_loaded : `${this._t.error_generic} : ${err.message || err}`;
+    }
+    this._signature = this._computeSignature();
+    this._renderAll();
+  }
 
-    const config = this._config || {};
-    const title = config.title || "Suivi de Présence";
+  _periodBounds() {
+    const now = new Date();
+    switch (this._period) {
+      case "today":
+        return { start: localDateString(now), end: null };
+      case "24h":
+        return { start: toIsoWithOffset(new Date(now.getTime() - 24 * 3600 * 1000)), end: null };
+      case "7d":
+        return { start: toIsoWithOffset(new Date(now.getTime() - 7 * 86400 * 1000)), end: null };
+      case "30d":
+        return { start: toIsoWithOffset(new Date(now.getTime() - 30 * 86400 * 1000)), end: null };
+      case "custom":
+        return { start: this._customStart || null, end: this._customEnd || null };
+      default:
+        return { start: null, end: null };
+    }
+  }
 
+  _activePersons() {
+    // Names/entity ids sent to the backend; empty = all visible persons.
+    if (this._selectedPersons.size > 0) return [...this._selectedPersons];
+    if (this._config.persons) return [...this._config.persons];
+    return null;
+  }
+
+  async _loadHistory() {
+    if (!this._hass || !this._overview) return;
+    if (!this._config.show_history && !this._config.show_summary && !this._config.show_export) return;
+    const request = ++this._historyRequest;
+    this._loadingHistory = true;
+    this._renderHistory();
+    const { start, end } = this._periodBounds();
+    const msg = { type: WS_HISTORY, limit: Math.min(Math.max(this._limit, 1), 2000) };
+    if (start) msg.start = start;
+    if (end) msg.end = end;
+    const persons = this._activePersons();
+    if (persons) msg.persons = persons;
+    try {
+      const data = await this._hass.callWS(msg);
+      if (request !== this._historyRequest) return;
+      this._history = data;
+      this._error = null;
+    } catch (err) {
+      if (request !== this._historyRequest) return;
+      this._history = null;
+      this._error = `${this._t.error_generic} : ${err.message || err}`;
+    }
+    this._loadingHistory = false;
+    this._renderSummary();
+    this._renderHistory();
+    this._renderExport();
+  }
+
+  // --- Rendering ------------------------------------------------------------------
+
+  _renderShell() {
     this.shadowRoot.innerHTML = `
-      <style>
-        :host {
-          --card-primary-color: var(--primary-color);
-          --card-background: var(--ha-card-background, var(--card-background-color, white));
-        }
-
-        ha-card {
-          padding: 16px;
-        }
-
-        .header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 16px;
-          flex-wrap: wrap;
-          gap: 8px;
-        }
-
-        .title {
-          font-size: 1.2em;
-          font-weight: 500;
-          color: var(--primary-text-color);
-        }
-
-        .buttons-row {
-          display: flex;
-          gap: 8px;
-          flex-wrap: wrap;
-        }
-
-        .btn {
-          background: var(--primary-color);
-          color: var(--text-primary-color, white);
-          border: none;
-          border-radius: 4px;
-          padding: 8px 12px;
-          cursor: pointer;
-          font-size: 0.85em;
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          transition: opacity 0.2s;
-        }
-
-        .btn:hover {
-          opacity: 0.85;
-        }
-
-        .btn.secondary {
-          background: var(--secondary-background-color);
-          color: var(--primary-text-color);
-          border: 1px solid var(--divider-color);
-        }
-
-        .btn.excel {
-          background: #217346;
-        }
-
-        .btn.filter {
-          background: var(--accent-color, #ff9800);
-        }
-
-        .filter-panel {
-          display: none;
-          background: var(--secondary-background-color);
-          border-radius: 8px;
-          padding: 16px;
-          margin-bottom: 16px;
-        }
-
-        .filter-panel.open {
-          display: block;
-        }
-
-        .filter-row {
-          display: flex;
-          gap: 12px;
-          margin-bottom: 12px;
-          flex-wrap: wrap;
-          align-items: flex-end;
-        }
-
-        .filter-group {
-          display: flex;
-          flex-direction: column;
-          gap: 4px;
-        }
-
-        .filter-group label {
-          font-size: 0.85em;
-          color: var(--secondary-text-color);
-        }
-
-        .filter-group input,
-        .filter-group select {
-          padding: 8px;
-          border: 1px solid var(--divider-color);
-          border-radius: 4px;
-          background: var(--card-background-color);
-          color: var(--primary-text-color);
-          font-size: 0.9em;
-        }
-
-        .filter-group select {
-          min-width: 150px;
-        }
-
-        .persons-checkboxes {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 8px;
-          margin-top: 8px;
-        }
-
-        .person-checkbox {
-          display: flex;
-          align-items: center;
-          gap: 4px;
-          background: var(--card-background-color);
-          padding: 4px 8px;
-          border-radius: 4px;
-          border: 1px solid var(--divider-color);
-          cursor: pointer;
-        }
-
-        .person-checkbox:hover {
-          background: var(--secondary-background-color);
-        }
-
-        .person-checkbox input {
-          cursor: pointer;
-        }
-
-        .stats-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-          gap: 12px;
-          margin-bottom: 16px;
-        }
-
-        .stat-card {
-          background: var(--secondary-background-color);
-          border-radius: 8px;
-          padding: 12px;
-          text-align: center;
-        }
-
-        .stat-value {
-          font-size: 1.8em;
-          font-weight: bold;
-          color: var(--primary-color);
-        }
-
-        .stat-label {
-          font-size: 0.8em;
-          color: var(--secondary-text-color);
-          margin-top: 4px;
-        }
-
-        .stat-card.home .stat-value {
-          color: var(--success-color, #4caf50);
-        }
-
-        .stat-card.away .stat-value {
-          color: var(--warning-color, #ff9800);
-        }
-
-        .stat-card.records .stat-value {
-          color: var(--info-color, #2196f3);
-        }
-
-        .persons-section {
-          margin-bottom: 16px;
-        }
-
-        .section-title {
-          font-weight: 500;
-          margin-bottom: 8px;
-          color: var(--primary-text-color);
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-
-        .persons-list {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 8px;
-        }
-
-        .person-badge {
-          background: var(--secondary-background-color);
-          border-radius: 16px;
-          padding: 6px 12px;
-          font-size: 0.9em;
-          display: flex;
-          align-items: center;
-          gap: 6px;
-        }
-
-        .person-badge.home {
-          border-left: 3px solid var(--success-color, #4caf50);
-        }
-
-        .person-badge.away {
-          border-left: 3px solid var(--warning-color, #ff9800);
-        }
-
-        .person-badge.zone {
-          border-left: 3px solid var(--info-color, #2196f3);
-        }
-
-        .history-section {
-          margin-top: 16px;
-        }
-
-        .history-table {
-          width: 100%;
-          border-collapse: collapse;
-          font-size: 0.8em;
-        }
-
-        .history-table th,
-        .history-table td {
-          padding: 8px 6px;
-          text-align: left;
-          border-bottom: 1px solid var(--divider-color);
-        }
-
-        .history-table th {
-          background: var(--secondary-background-color);
-          font-weight: 500;
-          position: sticky;
-          top: 0;
-        }
-
-        .history-table tr:hover {
-          background: var(--secondary-background-color);
-        }
-
-        .history-container {
-          max-height: 300px;
-          overflow-y: auto;
-        }
-
-        .no-data {
-          text-align: center;
-          color: var(--secondary-text-color);
-          padding: 20px;
-          font-style: italic;
-        }
-
-        .data-range {
-          font-size: 0.8em;
-          color: var(--secondary-text-color);
-          margin-top: 8px;
-          padding: 8px;
-          background: var(--secondary-background-color);
-          border-radius: 4px;
-        }
-
-        .zone-badge {
-          display: inline-block;
-          padding: 2px 8px;
-          border-radius: 4px;
-          font-size: 0.85em;
-        }
-
-        .zone-badge.home {
-          background: rgba(76, 175, 80, 0.2);
-          color: var(--success-color, #4caf50);
-        }
-
-        .zone-badge.not_home {
-          background: rgba(255, 152, 0, 0.2);
-          color: var(--warning-color, #ff9800);
-        }
-
-        .zone-badge.other {
-          background: rgba(33, 150, 243, 0.2);
-          color: var(--info-color, #2196f3);
-        }
-
-        @media (max-width: 500px) {
-          .stats-grid {
-            grid-template-columns: repeat(2, 1fr);
-          }
-          .filter-row {
-            flex-direction: column;
-          }
-          .filter-group {
-            width: 100%;
-          }
-          .filter-group input,
-          .filter-group select {
-            width: 100%;
-          }
-        }
-      </style>
-
+      <style>${SuiviPresenceCard.styles}</style>
       <ha-card>
-        <div class="header">
-          <span class="title">${title}</span>
-          <div class="buttons-row">
-            <button class="btn filter" id="filter-btn">
-              <ha-icon icon="mdi:filter"></ha-icon>
-              Filtres
-            </button>
-            <button class="btn secondary" id="csv-btn">
-              <ha-icon icon="mdi:file-delimited"></ha-icon>
-              CSV
-            </button>
-            <button class="btn excel" id="excel-btn">
-              <ha-icon icon="mdi:microsoft-excel"></ha-icon>
-              Excel
-            </button>
-          </div>
-        </div>
-
-        <div class="filter-panel" id="filter-panel">
-          <div class="filter-row">
-            <div class="filter-group">
-              <label>Date de début</label>
-              <input type="date" id="start-date" />
-            </div>
-            <div class="filter-group">
-              <label>Date de fin</label>
-              <input type="date" id="end-date" />
-            </div>
-            <button class="btn secondary" id="clear-filters">
-              <ha-icon icon="mdi:close"></ha-icon>
-              Effacer
-            </button>
-          </div>
-          <div class="filter-group">
-            <label>Personnes à inclure (vide = toutes)</label>
-            <div class="persons-checkboxes" id="persons-checkboxes">
-              <!-- Populated dynamically -->
-            </div>
-          </div>
-        </div>
-
-        <div class="stats-grid" id="stats-grid">
-          <!-- Populated dynamically -->
-        </div>
-
-        <div id="persons-content">
-          <!-- Populated dynamically -->
-        </div>
-
-        <div class="data-range" id="data-range">
-          <!-- Populated dynamically -->
-        </div>
-
-        <div class="history-section">
-          <div class="section-title">
-            <ha-icon icon="mdi:history"></ha-icon>
-            Historique récent
-          </div>
-          <div class="history-container">
-            <table class="history-table">
-              <thead>
-                <tr>
-                  <th>Date/Heure</th>
-                  <th>Personne</th>
-                  <th>De</th>
-                  <th>Vers</th>
-                </tr>
-              </thead>
-              <tbody id="history-body">
-                <!-- Populated dynamically -->
-              </tbody>
-            </table>
-          </div>
+        <div class="card-content">
+          <div id="header"></div>
+          <div id="alerts"></div>
+          <div id="persons"></div>
+          <div id="period"></div>
+          <div id="summary"></div>
+          <div id="history"></div>
+          <div id="export"></div>
+          <div id="details"></div>
         </div>
       </ha-card>
     `;
-
-    // Add event listeners
-    this._setupEventListeners();
-    this._updateData();
+    const root = this.shadowRoot;
+    root.addEventListener("click", (event) => this._onClick(event));
+    root.addEventListener("change", (event) => this._onChange(event));
   }
 
-  _setupEventListeners() {
-    // Filter toggle
-    this.shadowRoot.getElementById("filter-btn").addEventListener("click", () => {
-      this._filterOpen = !this._filterOpen;
-      this.shadowRoot
-        .getElementById("filter-panel")
-        .classList.toggle("open", this._filterOpen);
-    });
-
-    // Clear filters
-    this.shadowRoot.getElementById("clear-filters").addEventListener("click", () => {
-      this.shadowRoot.getElementById("start-date").value = "";
-      this.shadowRoot.getElementById("end-date").value = "";
-      this._startDate = "";
-      this._endDate = "";
-      this._selectedPersons = [];
-      this._updatePersonCheckboxes();
-    });
-
-    // Date inputs
-    this.shadowRoot.getElementById("start-date").addEventListener("change", (e) => {
-      this._startDate = e.target.value;
-    });
-
-    this.shadowRoot.getElementById("end-date").addEventListener("change", (e) => {
-      this._endDate = e.target.value;
-    });
-
-    // CSV download
-    this.shadowRoot.getElementById("csv-btn").addEventListener("click", () => {
-      this._downloadCSV();
-    });
-
-    // Excel download
-    this.shadowRoot.getElementById("excel-btn").addEventListener("click", () => {
-      this._downloadExcel();
-    });
+  _renderAll() {
+    this._renderHeader();
+    this._renderAlerts();
+    this._renderPersons();
+    this._renderPeriod();
+    this._renderSummary();
+    this._renderHistory();
+    this._renderExport();
+    this._renderDetails();
   }
 
-  _updateData() {
-    // Find sensors - device name "Suivi de Présence" becomes "suivi_de_presence"
-    // Sensor names: "Suivi Présence", "Personnes à domicile", "Personnes absentes", "Total des changements"
-    const mainSensor = Object.values(this._hass.states).find(
-      (s) =>
-        s.entity_id.startsWith("sensor.suivi_de_presence") &&
-        s.entity_id.endsWith("_suivi_presence")
-    );
-
-    const personsHomeSensor = Object.values(this._hass.states).find(
-      (s) =>
-        s.entity_id.startsWith("sensor.suivi_de_presence") &&
-        s.entity_id.includes("personnes_a_domicile")
-    );
-
-    const personsAwaySensor = Object.values(this._hass.states).find(
-      (s) =>
-        s.entity_id.startsWith("sensor.suivi_de_presence") &&
-        s.entity_id.includes("personnes_absentes")
-    );
-
-    const totalChangesSensor = Object.values(this._hass.states).find(
-      (s) =>
-        s.entity_id.startsWith("sensor.suivi_de_presence") &&
-        s.entity_id.includes("total_des_changements")
-    );
-
-    // Update stats
-    const statsGrid = this.shadowRoot.getElementById("stats-grid");
-    const personsHome = personsHomeSensor ? personsHomeSensor.state : "0";
-    const personsAway = personsAwaySensor ? personsAwaySensor.state : "0";
-    const totalChanges = totalChangesSensor ? totalChangesSensor.state : "0";
-
-    statsGrid.innerHTML = `
-      <div class="stat-card home">
-        <div class="stat-value">${personsHome}</div>
-        <div class="stat-label">À domicile</div>
-      </div>
-      <div class="stat-card away">
-        <div class="stat-value">${personsAway}</div>
-        <div class="stat-label">Absents</div>
-      </div>
-      <div class="stat-card records">
-        <div class="stat-value">${totalChanges}</div>
-        <div class="stat-label">Enregistrements</div>
-      </div>
-    `;
-
-    // Update persons content
-    this._updatePersonsContent(mainSensor);
-
-    // Update persons checkboxes for filtering
-    this._updatePersonCheckboxes(mainSensor);
-
-    // Update data range info
-    this._updateDataRange(mainSensor);
-
-    // Update history
-    this._updateHistory(mainSensor);
+  _section(id) {
+    return this.shadowRoot.getElementById(id);
   }
 
-  _updatePersonsContent(mainSensor) {
-    const container = this.shadowRoot.getElementById("persons-content");
-
-    if (!mainSensor) {
-      container.innerHTML = '<div class="no-data">En attente de données...</div>';
+  _renderHeader() {
+    const t = this._t;
+    const el = this._section("header");
+    if (this._config.title === false) {
+      el.innerHTML = "";
       return;
     }
-
-    const attrs = mainSensor.attributes;
-    const personsHome = attrs.persons_home || [];
-    const personsAway = attrs.persons_away || [];
-    const personsInZones = attrs.persons_in_zones || {};
-
-    let html = "";
-
-    // Persons at home
-    html += `
-      <div class="persons-section">
-        <div class="section-title">
-          <ha-icon icon="mdi:home-account"></ha-icon>
-          À domicile
-        </div>
-        <div class="persons-list">
-          ${
-            personsHome.length > 0
-              ? personsHome
-                  .map((p) => `<span class="person-badge home">${p}</span>`)
-                  .join("")
-              : '<span class="no-data">Personne</span>'
-          }
-        </div>
-      </div>
-    `;
-
-    // Persons away
-    html += `
-      <div class="persons-section">
-        <div class="section-title">
-          <ha-icon icon="mdi:home-export-outline"></ha-icon>
-          Absents
-        </div>
-        <div class="persons-list">
-          ${
-            personsAway.length > 0
-              ? personsAway
-                  .map((p) => `<span class="person-badge away">${p}</span>`)
-                  .join("")
-              : '<span class="no-data">Personne</span>'
-          }
-        </div>
-      </div>
-    `;
-
-    // Persons in other zones
-    if (Object.keys(personsInZones).length > 0) {
-      html += `
-        <div class="persons-section">
-          <div class="section-title">
-            <ha-icon icon="mdi:map-marker"></ha-icon>
-            Autres zones
-          </div>
-          <div class="persons-list">
-            ${Object.entries(personsInZones)
-              .map(
-                ([person, zone]) =>
-                  `<span class="person-badge zone">${person} (${zone})</span>`
-              )
-              .join("")}
-          </div>
-        </div>
-      `;
+    const title = this._config.title || t.title;
+    let status = "";
+    if (this._overview) {
+      const on = this._overview.tracking;
+      const n = (this._overview.persons || []).length;
+      status = `<span class="status ${on ? "on" : "off"}"><span class="dot"></span>${esc(on ? t.tracking_on : t.tracking_off)} · ${esc(t.persons_count(n))}</span>`;
+    } else if (this._error) {
+      status = `<span class="status off"><span class="dot"></span>${esc(t.tracking_off)}</span>`;
     }
-
-    container.innerHTML = html;
+    el.innerHTML = `
+      <div class="header">
+        <h1 class="title">${esc(title)}</h1>
+        ${status}
+      </div>`;
   }
 
-  _updatePersonCheckboxes(mainSensor) {
-    const container = this.shadowRoot.getElementById("persons-checkboxes");
+  _staleThresholdMs() {
+    return this._config.stale_after_minutes * 60000;
+  }
 
-    // Get all persons from main sensor
-    let allPersons = [];
-    if (mainSensor && mainSensor.attributes) {
-      const attrs = mainSensor.attributes;
-      allPersons = [
-        ...(attrs.persons_home || []),
-        ...(attrs.persons_away || []),
-        ...Object.keys(attrs.persons_in_zones || {}),
-      ];
-      allPersons = [...new Set(allPersons)].sort();
+  _personIssues(person) {
+    const t = this._t;
+    const issues = [];
+    if (!person.available) issues.push({ type: "unavailable", text: t.alert_unavailable(person.name) });
+    if (person.latitude !== null && person.latitude !== undefined && person.last_updated) {
+      const updated = new Date(person.last_updated);
+      if (Date.now() - updated.getTime() > this._staleThresholdMs()) {
+        issues.push({ type: "stale", text: t.alert_stale(person.name, formatRelative(updated, this._lang, t)) });
+      }
     }
+    return issues;
+  }
 
-    if (allPersons.length === 0) {
-      container.innerHTML = '<span class="no-data">Aucune personne détectée</span>';
+  _renderAlerts() {
+    const t = this._t;
+    const el = this._section("alerts");
+    const alerts = [];
+    if (this._error) alerts.push(this._error);
+    if (this._overview) {
+      if (this._overview.load_error) alerts.push(t.alert_load_error(this._overview.load_error));
+      for (const person of this._overview.persons || []) {
+        for (const issue of this._personIssues(person)) alerts.push(issue.text);
+      }
+    }
+    if (alerts.length === 0) {
+      el.innerHTML = "";
       return;
     }
+    el.innerHTML = `
+      <div class="alerts">
+        <div class="alerts-title"><ha-icon icon="mdi:alert-circle-outline"></ha-icon>${esc(t.alerts_title)}</div>
+        <ul>${alerts.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>
+      </div>`;
+  }
 
-    container.innerHTML = allPersons
+  _zoneLabel(zone) {
+    const t = this._t;
+    if (zone === "home") return t.home;
+    if (zone === "not_home") return t.away;
+    if (zone === "unknown" || !zone) return t.unknown;
+    if (zone === "unavailable") return t.unavailable;
+    return zone;
+  }
+
+  _renderPersons() {
+    const t = this._t;
+    const el = this._section("persons");
+    if (!this._overview) {
+      el.innerHTML = this._error ? "" : `<div class="empty">${esc(t.loading)}</div>`;
+      return;
+    }
+    const persons = this._overview.persons || [];
+    if (persons.length === 0) {
+      el.innerHTML = `<div class="empty">${esc(t.no_persons)}</div>`;
+      return;
+    }
+    const lang = this._lang;
+    el.innerHTML = `<div class="persons">${persons
+      .map((person) => {
+        const state = this._hass.states[person.entity_id];
+        const picture = state?.attributes?.entity_picture || person.picture;
+        const since = person.since ? new Date(person.since) : null;
+        const sinceText = since ? t.since(formatDuration((Date.now() - since.getTime()) / 1000, lang)) : t.since_unknown;
+        const issues = this._personIssues(person);
+        const zone = person.available ? person.zone : person.zone;
+        const cls = person.available ? zoneClass(zone) : "unknown";
+        let gps = t.gps_none;
+        let gpsClass = "muted";
+        if (person.latitude !== null && person.latitude !== undefined && person.last_updated) {
+          const updated = new Date(person.last_updated);
+          const stale = issues.some((i) => i.type === "stale");
+          const accuracy = person.gps_accuracy ? ` · ${t.gps_accuracy(Math.round(person.gps_accuracy))}` : "";
+          gps = `${stale ? t.gps_stale + " · " : ""}${t.gps_updated(formatRelative(updated, lang, t))}${accuracy}`;
+          gpsClass = stale ? "warn" : "muted";
+        }
+        const avatar = picture
+          ? `<img class="avatar" src="${esc(picture)}" alt="" loading="lazy">`
+          : `<div class="avatar initials">${esc(initials(person.name))}</div>`;
+        return `
+          <button class="person ${issues.length ? "has-issue" : ""}" data-action="more-info" data-entity="${esc(person.entity_id)}" title="${esc(person.entity_id)}">
+            ${avatar}
+            <div class="person-main">
+              <div class="person-row">
+                <span class="name">${esc(person.name)}</span>
+                <span class="zone-badge ${cls}">${esc(person.available ? this._zoneLabel(zone) : t.unavailable)}</span>
+              </div>
+              <div class="person-row sub">
+                <span>${esc(sinceText)}</span>
+                <span class="${gpsClass}">${esc(gps)}</span>
+              </div>
+            </div>
+            <ha-icon class="chevron" icon="mdi:chevron-right"></ha-icon>
+          </button>`;
+      })
+      .join("")}</div>`;
+  }
+
+  _renderPeriod() {
+    const t = this._t;
+    const el = this._section("period");
+    if (!this._overview || (!this._config.show_history && !this._config.show_summary && !this._config.show_export)) {
+      el.innerHTML = "";
+      return;
+    }
+    const chips = ["today", "24h", "7d", "30d", "all", "custom"]
       .map(
-        (person) => `
-        <label class="person-checkbox">
-          <input type="checkbox" value="${person}"
-            ${this._selectedPersons.includes(person) ? "checked" : ""} />
-          ${person}
-        </label>
-      `
+        (p) =>
+          `<button class="chip ${this._period === p ? "active" : ""}" data-action="period" data-period="${p}">${esc(t[`p_${p}`])}</button>`
       )
       .join("");
-
-    // Add event listeners to checkboxes
-    container.querySelectorAll("input[type=checkbox]").forEach((cb) => {
-      cb.addEventListener("change", (e) => {
-        if (e.target.checked) {
-          if (!this._selectedPersons.includes(e.target.value)) {
-            this._selectedPersons.push(e.target.value);
-          }
-        } else {
-          this._selectedPersons = this._selectedPersons.filter(
-            (p) => p !== e.target.value
-          );
-        }
-      });
-    });
+    const custom =
+      this._period === "custom"
+        ? `<div class="custom-range">
+             <label>${esc(t.from)} <input type="date" id="custom-start" value="${esc(this._customStart)}"></label>
+             <label>${esc(t.to)} <input type="date" id="custom-end" value="${esc(this._customEnd)}"></label>
+           </div>`
+        : "";
+    const persons = this._overview.persons || [];
+    let personChips = "";
+    if (persons.length > 1) {
+      personChips = `<div class="chips persons-filter">
+          <button class="chip small ${this._selectedPersons.size === 0 ? "active" : ""}" data-action="person-all">${esc(t.all_persons)}</button>
+          ${persons
+            .map(
+              (p) =>
+                `<button class="chip small ${this._selectedPersons.has(p.entity_id) ? "active" : ""}" data-action="person-toggle" data-entity="${esc(p.entity_id)}">${esc(p.name)}</button>`
+            )
+            .join("")}
+        </div>`;
+    }
+    el.innerHTML = `
+      <div class="period">
+        <div class="chips">${chips}</div>
+        ${custom}
+        ${personChips}
+      </div>`;
   }
 
-  _updateDataRange(mainSensor) {
-    const container = this.shadowRoot.getElementById("data-range");
-
-    if (!mainSensor || !mainSensor.attributes) {
-      container.innerHTML = "Aucune donnée disponible";
-      return;
+  _periodLabel() {
+    const t = this._t;
+    const lang = this._lang;
+    if (this._period === "custom") {
+      const s = this._customStart ? formatDateShort(new Date(`${this._customStart}T00:00:00`), lang) : "…";
+      const e = this._customEnd ? formatDateShort(new Date(`${this._customEnd}T00:00:00`), lang) : "…";
+      return `${t.from} ${s} ${t.to} ${e}`;
     }
-
-    const dataRange = mainSensor.attributes.data_range;
-    if (!dataRange || !dataRange.start_date) {
-      container.innerHTML = "Aucun historique enregistré";
-      return;
-    }
-
-    const startDate = new Date(dataRange.start_date).toLocaleDateString("fr-FR");
-    const endDate = new Date(dataRange.end_date).toLocaleDateString("fr-FR");
-
-    container.innerHTML = `
-      <strong>Données disponibles:</strong> du ${startDate} au ${endDate}
-      (${dataRange.total_records} enregistrements,
-      ${dataRange.unique_persons?.length || 0} personnes,
-      ${dataRange.unique_zones?.length || 0} zones)
-    `;
+    return t[`p_${this._period}`];
   }
 
-  _updateHistory(mainSensor) {
-    const tbody = this.shadowRoot.getElementById("history-body");
-
-    if (!mainSensor || !mainSensor.attributes) {
-      tbody.innerHTML =
-        '<tr><td colspan="4" class="no-data">Aucun historique</td></tr>';
+  _renderSummary() {
+    const t = this._t;
+    const el = this._section("summary");
+    if (!this._config.show_summary || !this._overview) {
+      el.innerHTML = "";
       return;
     }
-
-    const history = mainSensor.attributes.recent_history || [];
-
-    if (history.length === 0) {
-      tbody.innerHTML =
-        '<tr><td colspan="4" class="no-data">Aucun mouvement enregistré</td></tr>';
-      return;
+    const summary = this._history?.summary || {};
+    const names = Object.keys(summary).sort((a, b) => a.localeCompare(b));
+    let body;
+    if (!this._history && this._loadingHistory) {
+      body = `<div class="empty small">${esc(t.loading)}</div>`;
+    } else if (names.length === 0) {
+      body = `<div class="empty small">${esc(t.summary_empty)}</div>`;
+    } else {
+      const lang = this._lang;
+      body = names
+        .map((name) => {
+          const zones = Object.entries(summary[name])
+            .filter(([, s]) => s.seconds > 0)
+            .sort((a, b) => b[1].seconds - a[1].seconds);
+          const total = zones.reduce((acc, [, s]) => acc + s.seconds, 0) || 1;
+          const bar = zones
+            .map(([zone, s]) => {
+              const pct = Math.max((s.seconds / total) * 100, 1.5);
+              return `<span class="seg ${zoneClass(zone)}" style="width:${pct.toFixed(2)}%" title="${esc(this._zoneLabel(zone))} · ${esc(formatDuration(s.seconds, lang))}"></span>`;
+            })
+            .join("");
+          const legend = zones
+            .map(
+              ([zone, s]) =>
+                `<span class="legend-item"><span class="swatch ${zoneClass(zone)}"></span>${esc(this._zoneLabel(zone))} <strong>${esc(formatDuration(s.seconds, lang))}</strong>${s.ongoing ? ` <em>(${esc(t.ongoing)})</em>` : ""} <span class="muted">· ${esc(t.visits(s.visits))}</span></span>`
+            )
+            .join("");
+          return `
+            <div class="summary-person">
+              <div class="summary-name">${esc(name)}</div>
+              <div class="bar">${bar}</div>
+              <div class="legend">${legend}</div>
+            </div>`;
+        })
+        .join("");
     }
-
-    // Show last 10 entries, most recent first
-    const recentHistory = history.slice(-10).reverse();
-
-    tbody.innerHTML = recentHistory
-      .map((record) => {
-        const timestamp = new Date(record.timestamp);
-        const formattedDate = timestamp.toLocaleDateString("fr-FR");
-        const formattedTime = timestamp.toLocaleTimeString("fr-FR", {
-          hour: "2-digit",
-          minute: "2-digit",
-        });
-
-        const fromZoneClass =
-          record.previous_zone === "home"
-            ? "home"
-            : record.previous_zone === "not_home"
-            ? "not_home"
-            : "other";
-        const toZoneClass =
-          record.new_zone === "home"
-            ? "home"
-            : record.new_zone === "not_home"
-            ? "not_home"
-            : "other";
-
-        return `
-          <tr>
-            <td>${formattedDate} ${formattedTime}</td>
-            <td>${record.person}</td>
-            <td><span class="zone-badge ${fromZoneClass}">${record.previous_zone}</span></td>
-            <td><span class="zone-badge ${toZoneClass}">${record.new_zone}</span></td>
-          </tr>
-        `;
-      })
-      .join("");
+    el.innerHTML = `
+      <div class="section">
+        <div class="section-title">${esc(t.summary_title)} <span class="muted">· ${esc(this._periodLabel())}</span></div>
+        ${body}
+      </div>`;
   }
 
-  _buildQueryParams() {
+  _renderHistory() {
+    const t = this._t;
+    const el = this._section("history");
+    if (!this._config.show_history || !this._overview) {
+      el.innerHTML = "";
+      return;
+    }
+    const lang = this._lang;
+    let body;
+    if (!this._history && this._loadingHistory) {
+      body = `<div class="empty small">${esc(t.loading)}</div>`;
+    } else if (!this._history || this._history.records.length === 0) {
+      body = `<div class="empty small">${esc(t.history_empty)}</div>`;
+    } else {
+      const records = this._history.records;
+      const groups = new Map();
+      for (const record of records) {
+        const date = new Date(record.timestamp_utc || record.timestamp);
+        const key = localDateString(date);
+        if (!groups.has(key)) groups.set(key, { date, items: [] });
+        groups.get(key).items.push({ record, date });
+      }
+      const today = localDateString(new Date());
+      const yesterday = localDateString(new Date(Date.now() - 86400000));
+      const showPerson = (this._overview.persons || []).length > 1;
+      body = [...groups.values()]
+        .map((group) => {
+          const key = localDateString(group.date);
+          const label = key === today ? t.today_label : key === yesterday ? t.yesterday_label : formatDateLong(group.date, lang);
+          const rows = group.items
+            .map(({ record, date }) => {
+              const dur =
+                record.duration_seconds !== null && record.duration_seconds !== undefined
+                  ? `<span class="muted">${esc(t.after(formatDuration(record.duration_seconds, lang), this._zoneLabel(record.previous_zone)))}</span>`
+                  : "";
+              return `
+                <div class="hist-row">
+                  <span class="time">${esc(formatTime(date, lang))}</span>
+                  ${showPerson ? `<span class="hist-person">${esc(record.person)}</span>` : ""}
+                  <span class="zone-badge ${zoneClass(record.previous_zone)}">${esc(this._zoneLabel(record.previous_zone))}</span>
+                  <ha-icon class="arrow" icon="mdi:arrow-right-thin"></ha-icon>
+                  <span class="zone-badge ${zoneClass(record.new_zone)}">${esc(this._zoneLabel(record.new_zone))}</span>
+                  ${dur}
+                </div>`;
+            })
+            .join("");
+          return `<div class="hist-day"><div class="hist-date">${esc(label)}</div>${rows}</div>`;
+        })
+        .join("");
+      const total = this._history.total;
+      const shown = records.length;
+      const more =
+        shown < total
+          ? `<button class="chip small" data-action="more">${esc(t.show_more)}</button>`
+          : "";
+      body += `<div class="hist-footer"><span class="muted">${esc(t.history_count(shown, total))}</span>${more}</div>`;
+    }
+    el.innerHTML = `
+      <div class="section">
+        <div class="section-title">${esc(t.history_title)} <span class="muted">· ${esc(this._periodLabel())}</span></div>
+        ${body}
+      </div>`;
+  }
+
+  _renderExport() {
+    const t = this._t;
+    const el = this._section("export");
+    if (!this._config.show_export || !this._overview) {
+      el.innerHTML = "";
+      return;
+    }
+    const excelOk = !!this._overview.excel_available;
+    const count = this._history ? this._history.total : null;
+    const countText = count === null ? "" : `<span class="muted">${esc(t.history_count(count, count))}</span>`;
+    el.innerHTML = `
+      <div class="export">
+        <div class="export-label">${esc(t.export_title)} <span class="muted">· ${esc(this._periodLabel())}</span></div>
+        <div class="export-buttons">
+          ${countText}
+          <button class="btn" data-action="download" data-kind="csv"><ha-icon icon="mdi:file-delimited-outline"></ha-icon>${esc(t.export_csv)}</button>
+          <button class="btn excel" data-action="download" data-kind="excel" ${excelOk ? "" : `disabled title="${esc(t.export_excel_disabled)}"`}><ha-icon icon="mdi:microsoft-excel"></ha-icon>${esc(t.export_excel)}</button>
+        </div>
+        ${excelOk ? "" : `<div class="muted small-text">${esc(t.alert_excel)}</div>`}
+      </div>`;
+  }
+
+  _renderDetails() {
+    const t = this._t;
+    const el = this._section("details");
+    if (!this._config.show_details || !this._overview) {
+      el.innerHTML = "";
+      return;
+    }
+    const lang = this._lang;
+    const range = this._overview.data_range || {};
+    let rangeText = "—";
+    if (range.start_date && range.end_date) {
+      rangeText = `${formatDateShort(new Date(range.start_date), lang)} → ${formatDateShort(new Date(range.end_date), lang)}`;
+    }
+    el.innerHTML = `
+      <details class="details">
+        <summary>${esc(t.details)}</summary>
+        <dl>
+          <dt>${esc(t.d_csv)}</dt><dd><code>${esc(this._overview.csv_path)}</code></dd>
+          <dt>${esc(t.d_records)}</dt><dd>${esc(this._overview.total_records)}</dd>
+          <dt>${esc(t.d_range)}</dt><dd>${esc(rangeText)}</dd>
+          <dt>${esc(t.d_version)}</dt><dd>${esc(this._overview.version || "?")} (carte ${esc(CARD_VERSION)})</dd>
+          <dt>${esc(t.d_services)}</dt><dd><code>suivi_presence.export_csv</code>, <code>suivi_presence.export_excel</code>, <code>suivi_presence.clear_history</code></dd>
+        </dl>
+      </details>`;
+  }
+
+  // --- Interactions ------------------------------------------------------------------
+
+  _onClick(event) {
+    const target = event.composedPath().find((node) => node.dataset && node.dataset.action);
+    if (!target) return;
+    const action = target.dataset.action;
+    if (action === "more-info") {
+      this._fire("hass-more-info", { entityId: target.dataset.entity });
+    } else if (action === "period") {
+      this._period = target.dataset.period;
+      this._limit = this._config.history_limit;
+      if (this._period === "custom" && !this._customStart) {
+        const now = new Date();
+        this._customEnd = localDateString(now);
+        this._customStart = localDateString(new Date(now.getTime() - 6 * 86400000));
+      }
+      this._renderPeriod();
+      this._loadHistory();
+    } else if (action === "person-all") {
+      this._selectedPersons.clear();
+      this._renderPeriod();
+      this._loadHistory();
+    } else if (action === "person-toggle") {
+      const id = target.dataset.entity;
+      if (this._selectedPersons.has(id)) this._selectedPersons.delete(id);
+      else this._selectedPersons.add(id);
+      this._renderPeriod();
+      this._loadHistory();
+    } else if (action === "more") {
+      this._limit = Math.min(this._limit + this._config.history_limit, 2000);
+      this._loadHistory();
+    } else if (action === "download") {
+      this._download(target.dataset.kind);
+    }
+  }
+
+  _onChange(event) {
+    const target = event.composedPath()[0];
+    if (!target || !target.id) return;
+    if (target.id === "custom-start") this._customStart = target.value;
+    if (target.id === "custom-end") this._customEnd = target.value;
+    if (target.id === "custom-start" || target.id === "custom-end") {
+      if (this._customStart && this._customEnd && this._customEnd < this._customStart) {
+        [this._customStart, this._customEnd] = [this._customEnd, this._customStart];
+        this._renderPeriod();
+      }
+      this._loadHistory();
+    }
+  }
+
+  _fire(type, detail) {
+    this.dispatchEvent(new CustomEvent(type, { detail, bubbles: true, composed: true }));
+  }
+
+  _toast(message) {
+    this._fire("hass-notification", { message });
+  }
+
+  _downloadQuery() {
     const params = new URLSearchParams();
-
-    if (this._startDate) {
-      params.append("start_date", this._startDate + "T00:00:00");
-    }
-
-    if (this._endDate) {
-      params.append("end_date", this._endDate + "T23:59:59");
-    }
-
-    if (this._selectedPersons.length > 0) {
-      params.append("persons", this._selectedPersons.join(","));
-    }
-
+    const { start, end } = this._periodBounds();
+    if (start) params.set("start_date", start);
+    if (end) params.set("end_date", end);
+    const persons = this._activePersons();
+    if (persons && persons.length) params.set("persons", persons.join(","));
     return params.toString();
   }
 
-  async _downloadCSV() {
-    const queryParams = this._buildQueryParams();
-    const url = queryParams
-      ? `/api/suivi_presence/download/csv?${queryParams}`
-      : "/api/suivi_presence/download";
-
+  async _download(kind) {
+    const t = this._t;
+    if (kind === "excel" && !this._overview?.excel_available) {
+      this._toast(t.alert_excel);
+      return;
+    }
+    const query = this._downloadQuery();
+    let path;
+    if (kind === "excel") path = query ? `${URL_EXCEL}?${query}` : URL_EXCEL;
+    else path = query ? `${URL_CSV}?${query}` : URL_CSV_FULL;
     try {
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${this._hass.auth.data.access_token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const blob = await response.blob();
-      const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, "");
-      const filename = `suivi_presence_${timestamp}.csv`;
-
+      // Signed paths are how Home Assistant itself downloads files: the URL
+      // carries a short-lived signature, so no bearer token and no blob: URL
+      // are needed, and the companion apps handle the download natively.
+      const signed = await this._hass.callWS({ type: "auth/sign_path", path, expires: 120 });
+      const url = typeof this._hass.hassUrl === "function" ? this._hass.hassUrl(signed.path) : signed.path;
       const link = document.createElement("a");
-      link.href = URL.createObjectURL(blob);
-      link.download = filename;
+      link.href = url;
+      link.download = "";
+      link.style.display = "none";
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(link.href);
-    } catch (error) {
-      console.error("Erreur téléchargement CSV:", error);
-      alert("Erreur lors du téléchargement CSV: " + error.message);
+      link.remove();
+      this._toast(t.export_started);
+    } catch (err) {
+      this._toast(t.export_failed(err?.message || err));
     }
   }
 
-  async _downloadExcel() {
-    const queryParams = this._buildQueryParams();
-    const url = `/api/suivi_presence/download/excel${
-      queryParams ? "?" + queryParams : ""
-    }`;
+  // --- Styles ------------------------------------------------------------------------
 
-    try {
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${this._hass.auth.data.access_token}`,
-        },
-      });
+  static get styles() {
+    return `
+      :host { display: block; }
+      ha-card { overflow: hidden; }
+      .card-content { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+      .header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+      .title { margin: 0; font-size: 1.25rem; font-weight: 500; color: var(--primary-text-color); line-height: 1.3; }
+      .status { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--secondary-text-color); white-space: nowrap; }
+      .status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--error-color, #db4437); }
+      .status.on .dot { background: var(--success-color, #43a047); }
 
-      if (!response.ok) {
-        // The server answers with a JSON message when openpyxl is missing.
-        let message = `HTTP ${response.status}`;
-        try {
-          const payload = await response.json();
-          if (payload && payload.error) {
-            message = payload.error;
-          }
-        } catch (parseError) {
-          // Not a JSON body, keep the generic status message.
-        }
-        throw new Error(message);
+      .alerts { background: color-mix(in srgb, var(--warning-color, #ffa600) 14%, transparent); border-left: 4px solid var(--warning-color, #ffa600); border-radius: 8px; padding: 10px 12px; }
+      .alerts-title { display: flex; align-items: center; gap: 6px; font-weight: 500; margin-bottom: 4px; }
+      .alerts ul { margin: 0; padding-left: 18px; font-size: 0.9rem; }
+      .alerts li { margin: 2px 0; }
+
+      .persons { display: flex; flex-direction: column; gap: 6px; }
+      .person { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; background: var(--secondary-background-color, rgba(0,0,0,0.04)); border: none; border-radius: 12px; padding: 10px 12px; cursor: pointer; color: inherit; font: inherit; }
+      .person:hover { background: color-mix(in srgb, var(--primary-color) 10%, var(--secondary-background-color, transparent)); }
+      .person:focus-visible { outline: 2px solid var(--primary-color); }
+      .person.has-issue { box-shadow: inset 0 0 0 1px var(--warning-color, #ffa600); }
+      .avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex: none; }
+      .avatar.initials { display: flex; align-items: center; justify-content: center; background: var(--primary-color); color: var(--text-primary-color, #fff); font-weight: 600; font-size: 0.95rem; }
+      .person-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+      .person-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+      .person-row.sub { font-size: 0.8rem; color: var(--secondary-text-color); }
+      .name { font-weight: 500; font-size: 1rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .chevron { color: var(--secondary-text-color); flex: none; --mdc-icon-size: 20px; }
+      .muted { color: var(--secondary-text-color); font-weight: 400; }
+      .warn { color: var(--warning-color, #ffa600); font-weight: 500; }
+      .small-text { font-size: 0.8rem; }
+
+      .zone-badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 0.8rem; font-weight: 500; line-height: 1.5; white-space: nowrap; }
+      .zone-badge.home, .swatch.home, .seg.home { background: var(--success-color, #43a047); color: #fff; }
+      .zone-badge.away, .swatch.away, .seg.away { background: var(--warning-color, #ffa600); color: #fff; }
+      .zone-badge.zone, .swatch.zone, .seg.zone { background: var(--info-color, var(--primary-color, #1e88e5)); color: #fff; }
+      .zone-badge.unknown, .swatch.unknown, .seg.unknown { background: var(--disabled-color, #9e9e9e); color: #fff; }
+
+      .period { display: flex; flex-direction: column; gap: 8px; }
+      .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+      .chip { border: 1px solid var(--divider-color, rgba(0,0,0,0.12)); background: transparent; color: var(--primary-text-color); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 0.85rem; cursor: pointer; line-height: 1.2; }
+      .chip.small { padding: 4px 10px; font-size: 0.8rem; }
+      .chip:hover { background: var(--secondary-background-color, rgba(0,0,0,0.04)); }
+      .chip.active { background: var(--primary-color); border-color: var(--primary-color); color: var(--text-primary-color, #fff); }
+      .custom-range { display: flex; gap: 12px; flex-wrap: wrap; font-size: 0.85rem; color: var(--secondary-text-color); }
+      .custom-range label { display: flex; align-items: center; gap: 6px; }
+      .custom-range input { font: inherit; padding: 4px 6px; border: 1px solid var(--divider-color, rgba(0,0,0,0.12)); border-radius: 6px; background: var(--card-background-color, #fff); color: var(--primary-text-color); }
+
+      .section { display: flex; flex-direction: column; gap: 8px; }
+      .section-title { font-weight: 500; font-size: 0.95rem; }
+      .empty { color: var(--secondary-text-color); font-style: italic; padding: 8px 0; }
+      .empty.small { font-size: 0.85rem; padding: 4px 0; }
+
+      .summary-person { display: flex; flex-direction: column; gap: 4px; }
+      .summary-name { font-size: 0.85rem; font-weight: 500; }
+      .bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--divider-color, rgba(0,0,0,0.08)); }
+      .seg { display: block; height: 100%; }
+      .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.8rem; }
+      .legend-item { display: inline-flex; align-items: center; gap: 5px; }
+      .swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+      .hist-day { display: flex; flex-direction: column; gap: 2px; }
+      .hist-date { font-size: 0.8rem; color: var(--secondary-text-color); text-transform: capitalize; margin: 6px 0 2px; }
+      .hist-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 5px 0; border-bottom: 1px solid var(--divider-color, rgba(0,0,0,0.08)); font-size: 0.88rem; }
+      .hist-row:last-child { border-bottom: none; }
+      .time { font-variant-numeric: tabular-nums; color: var(--secondary-text-color); min-width: 44px; }
+      .hist-person { font-weight: 500; min-width: 70px; }
+      .arrow { color: var(--secondary-text-color); --mdc-icon-size: 18px; }
+      .hist-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.8rem; padding-top: 4px; }
+
+      .export { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--divider-color, rgba(0,0,0,0.08)); padding-top: 12px; }
+      .export-label { font-weight: 500; font-size: 0.95rem; }
+      .export-buttons { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; font-size: 0.8rem; }
+      .btn { display: inline-flex; align-items: center; gap: 6px; border: none; border-radius: 8px; padding: 8px 14px; font: inherit; font-size: 0.85rem; font-weight: 500; cursor: pointer; background: var(--primary-color); color: var(--text-primary-color, #fff); }
+      .btn.excel { background: #217346; color: #fff; }
+      .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+      .btn ha-icon { --mdc-icon-size: 18px; }
+
+      .details { font-size: 0.8rem; color: var(--secondary-text-color); }
+      .details summary { cursor: pointer; }
+      .details dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 8px 0 0; }
+      .details dt { font-weight: 500; }
+      .details dd { margin: 0; word-break: break-all; }
+      code { font-size: 0.78rem; background: var(--secondary-background-color, rgba(0,0,0,0.04)); padding: 1px 4px; border-radius: 4px; }
+
+      @media (max-width: 480px) {
+        .card-content { padding: 12px; }
+        .person-row { flex-direction: column; align-items: flex-start; gap: 2px; }
+        .person-row.sub { flex-direction: column; }
+        .hist-person { min-width: 0; }
+        .export-buttons { justify-content: stretch; }
+        .export-buttons .btn { flex: 1; justify-content: center; }
       }
-
-      const blob = await response.blob();
-      const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, "");
-      const filename = `suivi_presence_${timestamp}.xlsx`;
-
-      const link = document.createElement("a");
-      link.href = URL.createObjectURL(blob);
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(link.href);
-    } catch (error) {
-      console.error("Erreur téléchargement Excel:", error);
-      alert("Erreur lors du téléchargement Excel: " + error.message);
-    }
+    `;
   }
 }
 
-// Define the custom element
-customElements.define("suivi-presence-card", SuiviPresenceCard);
-
-// Register the card with HACS/Lovelace
-window.customCards = window.customCards || [];
-window.customCards.push({
-  type: "suivi-presence-card",
-  name: "Suivi de Présence",
-  description:
-    "Carte affichant le suivi des présences avec export CSV et Excel filtrable",
-  preview: true,
-});
-
-console.info(
-  "%c SUIVI-PRESENCE-CARD %c 0.1.1 ",
-  "color: white; background: #3498db; font-weight: bold;",
-  "color: #3498db; background: white; font-weight: bold;"
-);
+if (!customElements.get(CARD_TAG)) {
+  customElements.define(CARD_TAG, SuiviPresenceCard);
+  window.customCards = window.customCards || [];
+  if (!window.customCards.some((card) => card.type === CARD_TAG)) {
+    window.customCards.push({
+      type: CARD_TAG,
+      name: "Suivi de Présence",
+      description: "Qui est où, depuis quand, historique des zones et exports CSV / Excel.",
+      preview: false,
+      documentationURL: "https://github.com/FigurinePanda43/Suivi-Position-Home-Assistant",
+    });
+  }
+  console.info(
+    `%c SUIVI-PRESENCE-CARD %c ${CARD_VERSION} `,
+    "color: white; background: #305496; font-weight: bold;",
+    "color: #305496; background: white; font-weight: bold;"
+  );
+}

@@ -1,21 +1,28 @@
-"""
-Export module for Suivi de Présence.
+"""CSV and Excel exports.
 
-Handles CSV and Excel exports with filtering and statistics.
+The CSV export is a faithful copy of the permanent storage (same columns), with
+optional filters. The Excel export is a real ``.xlsx`` workbook: a summary sheet
+plus one sheet per person, with genuine date and duration cells so the file can
+be sorted, filtered and summed in Excel / LibreOffice.
+
+``openpyxl`` is an optional dependency: it is only needed for the Excel export
+and is deliberately NOT declared in ``manifest.json`` so that a failed pip
+install can never prevent the integration from loading.
 """
+
 from __future__ import annotations
 
 import csv
+from datetime import datetime
 import importlib.util
 import io
 import logging
-from collections import defaultdict
-from datetime import datetime, timedelta
+import re
 from typing import Any
 
+from homeassistant.util import dt as dt_util
+
 from .const import (
-    ATTR_DURATION,
-    ATTR_DURATION_SECONDS,
     ATTR_NEW_ZONE,
     ATTR_PERSON,
     ATTR_PREVIOUS_ZONE,
@@ -23,23 +30,26 @@ from .const import (
     CSV_HEADERS,
     EXCEL_DATA_SECTION,
     EXCEL_STATS_SECTION,
-    STAT_DAILY_AVG,
-    STAT_FIRST_VISIT,
-    STAT_FREQUENCY,
-    STAT_LAST_VISIT,
-    STAT_MONTHLY_AVG,
-    STAT_TOTAL_TIME,
-    STAT_WEEKLY_AVG,
+    EXCEL_SUMMARY_SHEET,
 )
+from .stats import (
+    CurrentState,
+    ZoneStats,
+    history_date_range,
+    record_person_matches,
+    state_person_matches,
+    zone_summary,
+)
+from .util import local_naive, parse_duration_seconds, parse_timestamp, period_days
 
 _LOGGER = logging.getLogger(__name__)
 
-# openpyxl is an optional dependency: it is only needed for the Excel export.
-# It is deliberately NOT declared in manifest.json's "requirements" so that a
-# failed pip install (no internet on the Home Assistant host, restricted
-# environment, ...) cannot block the whole integration from loading. Presence
-# tracking and the CSV export work without it.
 OPENPYXL_PACKAGE = "openpyxl>=3.1.0"
+
+_INVALID_SHEET_CHARS = re.compile(r"[\[\]:*?/\\]")
+_EXCEL_DURATION_FORMAT = "[h]:mm:ss"
+_EXCEL_DATETIME_FORMAT = "dd/mm/yyyy hh:mm:ss"
+_EXCEL_DATETIME_SHORT_FORMAT = "dd/mm/yyyy hh:mm"
 
 
 class ExcelExportUnavailableError(Exception):
@@ -59,488 +69,351 @@ def is_excel_available() -> bool:
     return importlib.util.find_spec("openpyxl") is not None
 
 
-def parse_duration(duration_str: str) -> timedelta | None:
-    """Parse a duration string to timedelta."""
-    if not duration_str:
-        return None
-
-    try:
-        # Format: "H:MM:SS" or "D days, H:MM:SS"
-        if "day" in duration_str:
-            parts = duration_str.split(", ")
-            days = int(parts[0].split()[0])
-            time_parts = parts[1].split(":")
-        else:
-            days = 0
-            time_parts = duration_str.split(":")
-
-        hours = int(time_parts[0])
-        minutes = int(time_parts[1])
-        seconds = float(time_parts[2]) if len(time_parts) > 2 else 0
-
-        return timedelta(days=days, hours=hours, minutes=minutes, seconds=seconds)
-    except (ValueError, IndexError):
-        return None
-
-
-def format_duration(td: timedelta | None) -> str:
-    """Format a timedelta to human-readable string."""
-    if td is None:
-        return "N/A"
-
-    total_seconds = int(td.total_seconds())
-    days, remainder = divmod(total_seconds, 86400)
-    hours, remainder = divmod(remainder, 3600)
-    minutes, seconds = divmod(remainder, 60)
-
-    if days > 0:
-        return f"{days}j {hours}h {minutes}m"
-    elif hours > 0:
-        return f"{hours}h {minutes}m {seconds}s"
-    elif minutes > 0:
-        return f"{minutes}m {seconds}s"
-    else:
-        return f"{seconds}s"
+# --------------------------------------------------------------------------- #
+# Filtering helpers
+# --------------------------------------------------------------------------- #
 
 
 def filter_history(
     history: list[dict],
-    start_date: datetime | None = None,
-    end_date: datetime | None = None,
-    persons: list[str] | None = None,
+    start: datetime | None = None,
+    end: datetime | None = None,
+    persons: set[str] | list[str] | None = None,
 ) -> list[dict]:
-    """Filter history by date range and/or persons."""
-    filtered = []
-
+    """Filter records by (aware) date range and/or persons (names or entity ids)."""
+    selection = set(persons) if persons else None
+    filtered: list[dict] = []
     for record in history:
-        # Parse timestamp
-        timestamp_str = record.get(ATTR_TIMESTAMP, "")
-        try:
-            timestamp = datetime.fromisoformat(timestamp_str)
-        except (ValueError, TypeError):
+        ts = parse_timestamp(record.get(ATTR_TIMESTAMP))
+        if ts is None:
             continue
-
-        # Filter by date range
-        if start_date and timestamp < start_date:
+        if start is not None and ts < start:
             continue
-        if end_date and timestamp > end_date:
+        if end is not None and ts > end:
             continue
-
-        # Filter by persons
-        if persons:
-            person = record.get(ATTR_PERSON, "")
-            if person not in persons:
-                continue
-
+        if not record_person_matches(record, selection):
+            continue
         filtered.append(record)
-
     return filtered
 
 
 def get_unique_persons(history: list[dict]) -> list[str]:
-    """Get list of unique persons from history."""
-    persons = set()
-    for record in history:
-        person = record.get(ATTR_PERSON, "")
-        if person:
-            persons.add(person)
-    return sorted(list(persons))
+    """Return the sorted list of person names present in the history."""
+    return sorted({r.get(ATTR_PERSON, "") for r in history if r.get(ATTR_PERSON)})
 
 
 def get_unique_zones(history: list[dict]) -> list[str]:
-    """Get list of unique zones from history."""
-    zones = set()
+    """Return the sorted list of zones present in the history."""
+    zones: set[str] = set()
     for record in history:
-        zones.add(record.get(ATTR_PREVIOUS_ZONE, ""))
-        zones.add(record.get(ATTR_NEW_ZONE, ""))
+        zones.add(record.get(ATTR_PREVIOUS_ZONE, "") or "")
+        zones.add(record.get(ATTR_NEW_ZONE, "") or "")
     zones.discard("")
-    return sorted(list(zones))
+    return sorted(zones)
 
 
-def calculate_zone_statistics(
-    history: list[dict],
-    person: str | None = None,
-) -> dict[str, dict[str, Any]]:
-    """
-    Calculate statistics for time spent in each zone.
+def get_date_range_info(history: list[dict]) -> dict[str, Any]:
+    """Describe the data available in the history (for the dashboard)."""
+    date_range = history_date_range(history)
+    return {
+        "start_date": date_range[0].isoformat() if date_range else None,
+        "end_date": date_range[1].isoformat() if date_range else None,
+        "total_records": len(history),
+        "unique_persons": get_unique_persons(history),
+        "unique_zones": get_unique_zones(history),
+    }
 
-    Returns:
-        Dict with zone names as keys and statistics as values.
-    """
-    # Filter by person if specified
-    if person:
-        history = [r for r in history if r.get(ATTR_PERSON) == person]
 
-    if not history:
-        return {}
-
-    # Group by zone (new_zone = where the person arrived)
-    zone_stats: dict[str, dict] = defaultdict(
-        lambda: {
-            "total_seconds": 0,
-            "visits": 0,
-            "first_visit": None,
-            "last_visit": None,
-            "durations": [],
-        }
-    )
-
-    for record in history:
-        zone = record.get(ATTR_NEW_ZONE, "")
-        if not zone:
-            continue
-
-        timestamp_str = record.get(ATTR_TIMESTAMP, "")
-        try:
-            timestamp = datetime.fromisoformat(timestamp_str)
-        except (ValueError, TypeError):
-            timestamp = None
-
-        # Count visit
-        zone_stats[zone]["visits"] += 1
-
-        # Track first and last visit
-        if timestamp:
-            if (
-                zone_stats[zone]["first_visit"] is None
-                or timestamp < zone_stats[zone]["first_visit"]
-            ):
-                zone_stats[zone]["first_visit"] = timestamp
-            if (
-                zone_stats[zone]["last_visit"] is None
-                or timestamp > zone_stats[zone]["last_visit"]
-            ):
-                zone_stats[zone]["last_visit"] = timestamp
-
-        # Add duration (duration is time spent in PREVIOUS zone before arriving here)
-        # We need to look at the next record to get duration IN this zone
-        duration_str = record.get(ATTR_DURATION, "")
-        duration_seconds = record.get(ATTR_DURATION_SECONDS)
-
-        if duration_seconds:
-            try:
-                zone_stats[record.get(ATTR_PREVIOUS_ZONE, "")]["total_seconds"] += float(
-                    duration_seconds
-                )
-            except (ValueError, TypeError):
-                pass
-        elif duration_str:
-            duration = parse_duration(duration_str)
-            if duration:
-                prev_zone = record.get(ATTR_PREVIOUS_ZONE, "")
-                if prev_zone:
-                    zone_stats[prev_zone]["total_seconds"] += duration.total_seconds()
-
-    # Calculate date range for averages
-    all_timestamps = []
-    for record in history:
-        try:
-            ts = datetime.fromisoformat(record.get(ATTR_TIMESTAMP, ""))
-            all_timestamps.append(ts)
-        except (ValueError, TypeError):
-            pass
-
-    if all_timestamps:
-        min_date = min(all_timestamps)
-        max_date = max(all_timestamps)
-        total_days = max((max_date - min_date).days, 1)
-        total_weeks = max(total_days / 7, 1)
-        total_months = max(total_days / 30, 1)
-    else:
-        total_days = 1
-        total_weeks = 1
-        total_months = 1
-
-    # Build final statistics
-    result = {}
-    for zone, stats in zone_stats.items():
-        total_seconds = stats["total_seconds"]
-        total_time = timedelta(seconds=total_seconds)
-
-        result[zone] = {
-            STAT_TOTAL_TIME: format_duration(total_time),
-            "total_seconds": total_seconds,
-            STAT_DAILY_AVG: format_duration(
-                timedelta(seconds=total_seconds / total_days) if total_days else None
-            ),
-            STAT_WEEKLY_AVG: format_duration(
-                timedelta(seconds=total_seconds / total_weeks) if total_weeks else None
-            ),
-            STAT_MONTHLY_AVG: format_duration(
-                timedelta(seconds=total_seconds / total_months) if total_months else None
-            ),
-            STAT_FREQUENCY: stats["visits"],
-            STAT_FIRST_VISIT: (
-                stats["first_visit"].strftime("%Y-%m-%d %H:%M")
-                if stats["first_visit"]
-                else "N/A"
-            ),
-            STAT_LAST_VISIT: (
-                stats["last_visit"].strftime("%Y-%m-%d %H:%M")
-                if stats["last_visit"]
-                else "N/A"
-            ),
-        }
-
-    return result
+# --------------------------------------------------------------------------- #
+# CSV
+# --------------------------------------------------------------------------- #
 
 
 def export_to_csv(
     history: list[dict],
-    start_date: datetime | None = None,
-    end_date: datetime | None = None,
-    persons: list[str] | None = None,
+    start: datetime | None = None,
+    end: datetime | None = None,
+    persons: set[str] | list[str] | None = None,
+    *,
+    delimiter: str = ",",
+    bom: bool = False,
 ) -> str:
+    """Return the filtered history as CSV text (same columns as the storage file).
+
+    ``bom`` prepends a UTF-8 byte order mark so that Microsoft Excel opens the
+    file with the right encoding when double-clicked. ``delimiter`` may be ``;``
+    for spreadsheets configured with a French / European locale.
     """
-    Export filtered history to CSV string.
-
-    Args:
-        history: Full history list
-        start_date: Optional start date filter
-        end_date: Optional end date filter
-        persons: Optional list of persons to include
-
-    Returns:
-        CSV content as string
-    """
-    filtered = filter_history(history, start_date, end_date, persons)
-
+    filtered = filter_history(history, start, end, persons)
     output = io.StringIO()
-    writer = csv.writer(output)
+    if bom:
+        output.write("﻿")
+    writer = csv.writer(output, delimiter=delimiter)
     writer.writerow(CSV_HEADERS)
-
     for record in filtered:
-        writer.writerow(
-            [
-                record.get(ATTR_TIMESTAMP, ""),
-                record.get(ATTR_PERSON, ""),
-                record.get(ATTR_PREVIOUS_ZONE, ""),
-                record.get(ATTR_NEW_ZONE, ""),
-                record.get(ATTR_DURATION, ""),
-                record.get(ATTR_DURATION_SECONDS, ""),
-            ]
-        )
-
+        writer.writerow([record.get(header, "") for header in CSV_HEADERS])
     return output.getvalue()
+
+
+# --------------------------------------------------------------------------- #
+# Excel
+# --------------------------------------------------------------------------- #
+
+
+def _safe_sheet_name(name: str, used: set[str]) -> str:
+    """Return a valid, unique Excel sheet name (31 chars max, no forbidden chars)."""
+    base = _INVALID_SHEET_CHARS.sub("_", name).strip().strip("'") or "Personne"
+    base = base[:31]
+    candidate = base
+    index = 2
+    while candidate.lower() in used:
+        suffix = f" ({index})"
+        candidate = f"{base[: 31 - len(suffix)]}{suffix}"
+        index += 1
+    used.add(candidate.lower())
+    return candidate
+
+
+def _excel_duration(seconds: float | None) -> float | None:
+    """Convert seconds to an Excel duration (fraction of a day)."""
+    if seconds is None:
+        return None
+    return seconds / 86400
+
+
+def _period_label(start: datetime | None, end: datetime | None, history: list[dict]) -> str:
+    """Human readable description of the exported period (local time)."""
+
+    def fmt(value: datetime) -> str:
+        return dt_util.as_local(value).strftime("%d/%m/%Y %H:%M")
+
+    if start and end:
+        return f"Période : du {fmt(start)} au {fmt(end)}"
+    if start:
+        return f"Période : depuis le {fmt(start)}"
+    if end:
+        return f"Période : jusqu'au {fmt(end)}"
+    date_range = history_date_range(history)
+    if date_range:
+        return f"Période : toutes les données (du {fmt(date_range[0])} au {fmt(date_range[1])})"
+    return "Période : toutes les données"
+
+
+def _collect_persons(
+    filtered: list[dict],
+    current_states: list[CurrentState],
+    selection: set[str] | None,
+) -> list[str]:
+    """Return the ordered list of person names that get a sheet.
+
+    Persons come from the filtered records, from the tracked persons matching the
+    selection (so a person without any transition in the period still gets a sheet
+    with their ongoing stay), and from plain names given in the selection.
+    """
+    names: set[str] = {r[ATTR_PERSON] for r in filtered if r.get(ATTR_PERSON)}
+    for state in current_states:
+        if state.person and state_person_matches(state, selection):
+            names.add(state.person)
+    if selection:
+        names.update(item for item in selection if not item.startswith("person."))
+    return sorted(names, key=str.casefold)
 
 
 def export_to_excel(
     history: list[dict],
-    start_date: datetime | None = None,
-    end_date: datetime | None = None,
-    persons: list[str] | None = None,
+    current_states: list[CurrentState] | None = None,
+    *,
+    start: datetime | None = None,
+    end: datetime | None = None,
+    persons: set[str] | list[str] | None = None,
+    now: datetime | None = None,
 ) -> bytes:
-    """
-    Export filtered history to Excel with one sheet per person and statistics.
-
-    Args:
-        history: Full history list
-        start_date: Optional start date filter
-        end_date: Optional end date filter
-        persons: Optional list of persons to include
-
-    Returns:
-        Excel file content as bytes
+    """Build the Excel workbook and return its bytes.
 
     Raises:
         ExcelExportUnavailableError: if openpyxl is not installed.
     """
     try:
-        from openpyxl import Workbook
-        from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-        from openpyxl.utils import get_column_letter
+        from openpyxl import Workbook  # noqa: PLC0415
+        from openpyxl.styles import Alignment, Border, Font, PatternFill, Side  # noqa: PLC0415
+        from openpyxl.utils import get_column_letter  # noqa: PLC0415
     except ImportError as err:
         _LOGGER.error(
-            "openpyxl is not installed, Excel export unavailable. "
-            "Install it with: pip install '%s'",
+            "openpyxl is not installed, Excel export unavailable. Install it with: pip install '%s'",
             OPENPYXL_PACKAGE,
         )
         raise ExcelExportUnavailableError() from err
 
-    # Filter history
-    filtered = filter_history(history, start_date, end_date, persons)
+    now = now or dt_util.utcnow()
+    current_states = current_states or []
+    selection = set(persons) if persons else None
+    filtered = filter_history(history, start, end, selection)
+    person_names = _collect_persons(filtered, current_states, selection)
 
-    # Get unique persons (either from filter or from data)
-    if persons:
-        unique_persons = persons
-    else:
-        unique_persons = get_unique_persons(filtered)
-
-    if not unique_persons:
-        unique_persons = ["Aucune donnée"]
-
-    # Create workbook
-    wb = Workbook()
-    wb.remove(wb.active)  # Remove default sheet
+    # Stays may have started before ``start``: the summary needs the full history.
+    summary = zone_summary(
+        history, current_states, start=start, end=end, persons=selection, now=now
+    )
+    date_range = history_date_range(history)
+    days = period_days(start, end or now, date_range)
+    period_text = _period_label(start, end, history)
+    generated_text = (
+        f"Généré le {dt_util.as_local(now).strftime('%d/%m/%Y à %H:%M')} par Suivi de Présence"
+    )
 
     # Styles
+    title_font = Font(bold=True, size=14)
+    note_font = Font(italic=True, color="666666", size=9)
     header_font = Font(bold=True, color="FFFFFF")
-    header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
-    stat_header_fill = PatternFill(
-        start_color="70AD47", end_color="70AD47", fill_type="solid"
-    )
-    thin_border = Border(
-        left=Side(style="thin"),
-        right=Side(style="thin"),
-        top=Side(style="thin"),
-        bottom=Side(style="thin"),
-    )
-    center_alignment = Alignment(horizontal="center", vertical="center")
+    header_fill = PatternFill(start_color="305496", end_color="305496", fill_type="solid")
+    stats_fill = PatternFill(start_color="548235", end_color="548235", fill_type="solid")
+    thin = Side(style="thin", color="BFBFBF")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
-    # Create a sheet for each person
-    for person in unique_persons:
-        # Create sheet with safe name (Excel limits to 31 chars)
-        sheet_name = person[:31] if len(person) > 31 else person
-        ws = wb.create_sheet(title=sheet_name)
-
-        # Get person's data
-        person_history = [r for r in filtered if r.get(ATTR_PERSON) == person]
-
-        # === STATISTICS SECTION ===
-        ws["A1"] = f"📊 {EXCEL_STATS_SECTION} - {person}"
-        ws["A1"].font = Font(bold=True, size=14)
-        ws.merge_cells("A1:G1")
-
-        # Calculate statistics for this person
-        stats = calculate_zone_statistics(filtered, person)
-
-        if stats:
-            # Statistics headers
-            stat_headers = [
-                "Zone",
-                STAT_TOTAL_TIME,
-                STAT_DAILY_AVG,
-                STAT_WEEKLY_AVG,
-                STAT_MONTHLY_AVG,
-                STAT_FREQUENCY,
-                STAT_FIRST_VISIT,
-                STAT_LAST_VISIT,
-            ]
-
-            row = 3
-            for col, header in enumerate(stat_headers, 1):
-                cell = ws.cell(row=row, column=col, value=header)
-                cell.font = header_font
-                cell.fill = stat_header_fill
-                cell.border = thin_border
-                cell.alignment = center_alignment
-
-            # Statistics data
-            row = 4
-            for zone, zone_stats in sorted(stats.items()):
-                ws.cell(row=row, column=1, value=zone).border = thin_border
-                ws.cell(
-                    row=row, column=2, value=zone_stats.get(STAT_TOTAL_TIME, "N/A")
-                ).border = thin_border
-                ws.cell(
-                    row=row, column=3, value=zone_stats.get(STAT_DAILY_AVG, "N/A")
-                ).border = thin_border
-                ws.cell(
-                    row=row, column=4, value=zone_stats.get(STAT_WEEKLY_AVG, "N/A")
-                ).border = thin_border
-                ws.cell(
-                    row=row, column=5, value=zone_stats.get(STAT_MONTHLY_AVG, "N/A")
-                ).border = thin_border
-                ws.cell(
-                    row=row, column=6, value=zone_stats.get(STAT_FREQUENCY, 0)
-                ).border = thin_border
-                ws.cell(
-                    row=row, column=7, value=zone_stats.get(STAT_FIRST_VISIT, "N/A")
-                ).border = thin_border
-                ws.cell(
-                    row=row, column=8, value=zone_stats.get(STAT_LAST_VISIT, "N/A")
-                ).border = thin_border
-                row += 1
-
-            stats_end_row = row
-        else:
-            ws["A3"] = "Aucune statistique disponible"
-            stats_end_row = 4
-
-        # === DATA SECTION ===
-        data_start_row = stats_end_row + 2
-
-        ws.cell(row=data_start_row, column=1, value=f"📋 {EXCEL_DATA_SECTION}")
-        ws.cell(row=data_start_row, column=1).font = Font(bold=True, size=14)
-        ws.merge_cells(f"A{data_start_row}:F{data_start_row}")
-
-        # Data headers
-        data_headers = [
-            "Date/Heure",
-            "Zone précédente",
-            "Nouvelle zone",
-            "Durée (zone préc.)",
-            "Durée (secondes)",
-        ]
-
-        header_row = data_start_row + 2
-        for col, header in enumerate(data_headers, 1):
-            cell = ws.cell(row=header_row, column=col, value=header)
+    def write_header(ws: Any, row: int, headers: list[str], fill: Any) -> None:
+        for col, text in enumerate(headers, start=1):
+            cell = ws.cell(row=row, column=col, value=text)
             cell.font = header_font
-            cell.fill = header_fill
-            cell.border = thin_border
-            cell.alignment = center_alignment
+            cell.fill = fill
+            cell.border = border
+            cell.alignment = center
 
-        # Data rows
-        row = header_row + 1
-        for record in person_history:
-            timestamp_str = record.get(ATTR_TIMESTAMP, "")
-            try:
-                timestamp = datetime.fromisoformat(timestamp_str)
-                formatted_ts = timestamp.strftime("%Y-%m-%d %H:%M:%S")
-            except (ValueError, TypeError):
-                formatted_ts = timestamp_str
+    def write_stats_rows(
+        ws: Any, row: int, zones: dict[str, ZoneStats], with_person: str | None
+    ) -> int:
+        for zone, stats in sorted(zones.items(), key=lambda item: -item[1].seconds):
+            col = 1
+            if with_person is not None:
+                ws.cell(row=row, column=col, value=with_person).border = border
+                col += 1
+            ws.cell(row=row, column=col, value=zone).border = border
+            cell = ws.cell(row=row, column=col + 1, value=_excel_duration(stats.seconds))
+            cell.number_format = _EXCEL_DURATION_FORMAT
+            cell.border = border
+            cell = ws.cell(row=row, column=col + 2, value=_excel_duration(stats.seconds / days))
+            cell.number_format = _EXCEL_DURATION_FORMAT
+            cell.border = border
+            ws.cell(row=row, column=col + 3, value=stats.visits).border = border
+            for offset, value in ((4, stats.first), (5, stats.last)):
+                cell = ws.cell(
+                    row=row, column=col + offset, value=local_naive(value) if value else None
+                )
+                cell.number_format = _EXCEL_DATETIME_SHORT_FORMAT
+                cell.border = border
+            ws.cell(row=row, column=col + 6, value="Oui" if stats.ongoing else "").border = border
+            row += 1
+        return row
 
-            ws.cell(row=row, column=1, value=formatted_ts).border = thin_border
-            ws.cell(
-                row=row, column=2, value=record.get(ATTR_PREVIOUS_ZONE, "")
-            ).border = thin_border
-            ws.cell(
-                row=row, column=3, value=record.get(ATTR_NEW_ZONE, "")
-            ).border = thin_border
-            ws.cell(
-                row=row, column=4, value=record.get(ATTR_DURATION, "")
-            ).border = thin_border
-            ws.cell(
-                row=row, column=5, value=record.get(ATTR_DURATION_SECONDS, "")
-            ).border = thin_border
+    stats_headers = [
+        "Zone",
+        "Temps total",
+        "Moyenne par jour",
+        "Visites",
+        "Première arrivée",
+        "Dernière arrivée",
+        "En cours",
+    ]
+
+    wb = Workbook()
+    used_names: set[str] = set()
+
+    # ---- Summary sheet ----
+    ws = wb.active
+    ws.title = _safe_sheet_name(EXCEL_SUMMARY_SHEET, used_names)
+    ws["A1"] = "Suivi de Présence — Résumé"
+    ws["A1"].font = title_font
+    ws["A2"] = period_text
+    ws["A3"] = generated_text
+    ws["A3"].font = note_font
+    ws["A4"] = (
+        "Temps au format heures:minutes:secondes (les heures peuvent dépasser 24). "
+        f"Moyennes calculées sur {days:.1f} jour(s)."
+    )
+    ws["A4"].font = note_font
+    write_header(ws, 6, ["Personne", *stats_headers], header_fill)
+    row = 7
+    if summary:
+        for person in person_names:
+            zones = summary.get(person)
+            if zones:
+                row = write_stats_rows(ws, row, zones, person)
+    if row == 7:
+        ws.cell(row=row, column=1, value="Aucune donnée pour cette période")
+        row += 1
+    ws.freeze_panes = "A7"
+    ws.auto_filter.ref = f"A6:H{max(row - 1, 6)}"
+    for col, width in enumerate((22, 20, 14, 16, 10, 18, 18, 10), start=1):
+        ws.column_dimensions[get_column_letter(col)].width = width
+
+    # ---- One sheet per person ----
+    data_headers = [
+        "Date et heure",
+        "Zone précédente",
+        "Nouvelle zone",
+        "Durée dans la zone précédente",
+        "Durée (secondes)",
+    ]
+    for person in person_names:
+        ws = wb.create_sheet(title=_safe_sheet_name(person, used_names))
+        ws["A1"] = f"{EXCEL_STATS_SECTION} — {person}"
+        ws["A1"].font = title_font
+        ws["A2"] = period_text
+        ws["A2"].font = note_font
+
+        write_header(ws, 4, stats_headers, stats_fill)
+        row = 5
+        zones = summary.get(person, {})
+        if zones:
+            row = write_stats_rows(ws, row, zones, None)
+        else:
+            ws.cell(row=row, column=1, value="Aucune statistique pour cette période")
             row += 1
 
-        # Auto-adjust column widths
-        for col in range(1, 9):
-            ws.column_dimensions[get_column_letter(col)].width = 18
+        data_title_row = row + 1
+        ws.cell(row=data_title_row, column=1, value=EXCEL_DATA_SECTION).font = title_font
+        header_row = data_title_row + 1
+        write_header(ws, header_row, data_headers, header_fill)
+        row = header_row + 1
+        for record in filtered:
+            if record.get(ATTR_PERSON) != person:
+                continue
+            ts = parse_timestamp(record.get(ATTR_TIMESTAMP))
+            cell = ws.cell(
+                row=row, column=1, value=local_naive(ts) if ts else record.get(ATTR_TIMESTAMP)
+            )
+            cell.number_format = _EXCEL_DATETIME_FORMAT
+            cell.border = border
+            ws.cell(row=row, column=2, value=record.get(ATTR_PREVIOUS_ZONE, "")).border = border
+            ws.cell(row=row, column=3, value=record.get(ATTR_NEW_ZONE, "")).border = border
+            seconds = parse_duration_seconds(record)
+            cell = ws.cell(row=row, column=4, value=_excel_duration(seconds))
+            cell.number_format = _EXCEL_DURATION_FORMAT
+            cell.border = border
+            cell = ws.cell(
+                row=row, column=5, value=int(round(seconds)) if seconds is not None else None
+            )
+            cell.border = border
+            row += 1
+        if row == header_row + 1:
+            ws.cell(row=row, column=1, value="Aucun changement de zone sur la période")
+            row += 1
+        ws.auto_filter.ref = f"A{header_row}:E{max(row - 1, header_row)}"
+        for col, width in enumerate((20, 18, 18, 26, 16, 18, 18, 10), start=1):
+            ws.column_dimensions[get_column_letter(col)].width = width
 
-    # Save to bytes
     output = io.BytesIO()
     wb.save(output)
-    output.seek(0)
-
     return output.getvalue()
 
 
-def get_date_range_info(history: list[dict]) -> dict:
-    """Get information about the date range in history."""
-    if not history:
-        return {
-            "start_date": None,
-            "end_date": None,
-            "total_records": 0,
-            "unique_persons": [],
-            "unique_zones": [],
-        }
-
-    timestamps = []
-    for record in history:
-        try:
-            ts = datetime.fromisoformat(record.get(ATTR_TIMESTAMP, ""))
-            timestamps.append(ts)
-        except (ValueError, TypeError):
-            pass
-
-    return {
-        "start_date": min(timestamps).isoformat() if timestamps else None,
-        "end_date": max(timestamps).isoformat() if timestamps else None,
-        "total_records": len(history),
-        "unique_persons": get_unique_persons(history),
-        "unique_zones": get_unique_zones(history),
-    }
+__all__ = [
+    "ExcelExportUnavailableError",
+    "export_to_csv",
+    "export_to_excel",
+    "filter_history",
+    "get_date_range_info",
+    "get_unique_persons",
+    "get_unique_zones",
+    "is_excel_available",
+]

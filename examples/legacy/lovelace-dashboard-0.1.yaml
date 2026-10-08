@@ -1,0 +1,89 @@
+# Exemple de configuration du tableau de bord Lovelace pour Suivi de Présence
+# Version: 0.1.0
+#
+# Instructions:
+# 1. Ajoutez la ressource JavaScript dans la configuration Lovelace:
+#    Allez dans Configuration > Tableaux de bord > Ressources (en haut à droite)
+#    Puis ajoutez:
+#      URL: /local/suivi_presence/suivi-presence-card.js
+#      Type: Module JavaScript
+#
+# 2. Copiez cette configuration dans votre tableau de bord
+#
+# Note: Les entity_id sont générés automatiquement par Home Assistant.
+# Le format est: sensor.suivi_de_presence_<nom_du_capteur>
+
+title: Suivi de Présence
+views:
+  - title: Présence
+    icon: mdi:account-group
+    path: presence
+    cards:
+      # Carte personnalisée Suivi de Présence (recommandée)
+      # Inclut les boutons de téléchargement CSV/Excel avec filtres
+      - type: custom:suivi-presence-card
+        title: Suivi des Présences
+        show_history: true
+        history_count: 10
+
+      # Ou utilisez les entités standard
+      - type: entities
+        title: Statut des Présences
+        entities:
+          - entity: sensor.suivi_de_presence_suivi_presence
+            name: Total personnes suivies
+          - entity: sensor.suivi_de_presence_personnes_a_domicile
+            name: À domicile
+          - entity: sensor.suivi_de_presence_personnes_absentes
+            name: Absents
+          - entity: sensor.suivi_de_presence_total_des_changements
+            name: Changements enregistrés
+
+      # Carte de statistiques
+      - type: statistics-graph
+        title: Évolution des changements
+        entities:
+          - entity: sensor.suivi_de_presence_total_des_changements
+        stat_types:
+          - change
+        days_to_show: 7
+
+      # Historique graphique
+      - type: history-graph
+        title: Historique des présences (24h)
+        hours_to_show: 24
+        entities:
+          - entity: sensor.suivi_de_presence_personnes_a_domicile
+          - entity: sensor.suivi_de_presence_personnes_absentes
+
+      # Carte markdown avec instructions
+      - type: markdown
+        title: Instructions
+        content: |
+          ## Utilisation
+
+          ### Téléchargements
+          Utilisez les boutons **CSV** et **Excel** dans la carte principale.
+          Vous pouvez filtrer par date et par personne avant l'export.
+
+          ### Export Excel
+          Le fichier Excel contient:
+          - **Une feuille par personne** avec ses données et statistiques
+          - Temps total par zone
+          - Moyennes journalière, hebdomadaire et mensuelle
+          - Fréquence des visites par zone
+
+          ### Services disponibles
+          - `suivi_presence.export_csv` : Exporter CSV filtré
+          - `suivi_presence.export_excel` : Exporter Excel avec statistiques
+          - `suivi_presence.clear_history` : Effacer l'historique (attention!)
+
+          ### Format du CSV
+          | Colonne | Description |
+          |---------|-------------|
+          | timestamp | Date et heure ISO 8601 |
+          | person | Nom de la personne |
+          | previous_zone | Zone de départ |
+          | new_zone | Zone d'arrivée |
+          | duration_in_previous | Durée lisible (ex: 2h 30m) |
+          | duration_seconds | Durée en secondes |

@@ -1,76 +1,76 @@
-"""Constants for Suivi de Présence integration."""
+"""Constants for the Suivi de Présence integration."""
+
+from __future__ import annotations
+
 from typing import Final
 
-DOMAIN: Final = "suivi_presence"
-VERSION: Final = "0.1.0"
+from homeassistant.const import Platform
 
-# Configuration keys
-CONF_SCAN_INTERVAL: Final = "scan_interval"
+DOMAIN: Final = "suivi_presence"
+
+# --- Configuration (config entry data / options) -----------------------------
 CONF_CSV_PATH: Final = "csv_path"
 CONF_TRACKED_PERSONS: Final = "tracked_persons"
 
-# Default values
-DEFAULT_SCAN_INTERVAL: Final = 30
-DEFAULT_CSV_FILENAME: Final = "suivi_presence_data.csv"  # CSV brut permanent
+DEFAULT_CSV_FILENAME: Final = "suivi_presence_data.csv"
 
-# Services
+# --- Services -----------------------------------------------------------------
 SERVICE_EXPORT_CSV: Final = "export_csv"
 SERVICE_EXPORT_EXCEL: Final = "export_excel"
 SERVICE_CLEAR_HISTORY: Final = "clear_history"
-SERVICE_DOWNLOAD_CSV: Final = "download_csv"
 
-# Service parameters
+ATTR_FILENAME: Final = "filename"
 ATTR_START_DATE: Final = "start_date"
 ATTR_END_DATE: Final = "end_date"
 ATTR_PERSONS: Final = "persons"
+ATTR_DELIMITER: Final = "delimiter"
 
-# Attributes
+# --- CSV columns (permanent storage) ------------------------------------------
+# Rule: columns are only ever ADDED, never renamed or removed (see context.md).
+ATTR_TIMESTAMP: Final = "timestamp"
 ATTR_PERSON: Final = "person"
 ATTR_PREVIOUS_ZONE: Final = "previous_zone"
 ATTR_NEW_ZONE: Final = "new_zone"
-ATTR_TIMESTAMP: Final = "timestamp"
 ATTR_DURATION: Final = "duration_in_previous"
 ATTR_DURATION_SECONDS: Final = "duration_seconds"
-ATTR_FILENAME: Final = "filename"
+ATTR_PERSON_ENTITY_ID: Final = "person_entity_id"  # added in 1.0.0
 
-# CSV Headers
-CSV_HEADERS: Final = [
-    "timestamp",
-    "person",
-    "previous_zone",
-    "new_zone",
-    "duration_in_previous",
-    "duration_seconds",
+CSV_HEADERS: Final[list[str]] = [
+    ATTR_TIMESTAMP,
+    ATTR_PERSON,
+    ATTR_PREVIOUS_ZONE,
+    ATTR_NEW_ZONE,
+    ATTR_DURATION,
+    ATTR_DURATION_SECONDS,
+    ATTR_PERSON_ENTITY_ID,
 ]
 
-# States
-STATE_HOME: Final = "home"
-STATE_NOT_HOME: Final = "not_home"
-STATE_UNKNOWN: Final = "unknown"
+# Header of the files written by versions <= 0.1.1 (used to detect migration).
+LEGACY_CSV_HEADERS_0_1: Final[list[str]] = CSV_HEADERS[:6]
+LEGACY_CSV_HEADERS_0_0: Final[list[str]] = CSV_HEADERS[:5]
 
-# Panel
-PANEL_URL: Final = "/suivi-presence"
-PANEL_TITLE: Final = "Suivi Présence"
-PANEL_ICON: Final = "mdi:account-group"
-
-# HTTP endpoints
+# --- HTTP endpoints -------------------------------------------------------------
 HTTP_DOWNLOAD_PATH: Final = "/api/suivi_presence/download"
 HTTP_DOWNLOAD_CSV_FILTERED: Final = "/api/suivi_presence/download/csv"
 HTTP_DOWNLOAD_EXCEL: Final = "/api/suivi_presence/download/excel"
 HTTP_DATA_PATH: Final = "/api/suivi_presence/data"
 
-# Platforms
-PLATFORMS: Final = ["sensor"]
+# Static files (Lovelace card). Served from custom_components/suivi_presence/www.
+STATIC_URL_BASE: Final = "/suivi_presence"
+CARD_FILENAME: Final = "suivi-presence-card.js"
 
-# Excel sheet names
-EXCEL_STATS_SECTION: Final = "Statistiques"
-EXCEL_DATA_SECTION: Final = "Données"
+# --- WebSocket commands ---------------------------------------------------------
+WS_OVERVIEW: Final = "suivi_presence/overview"
+WS_HISTORY: Final = "suivi_presence/history"
 
-# Statistics labels
-STAT_TOTAL_TIME: Final = "Temps total"
-STAT_DAILY_AVG: Final = "Moyenne journalière"
-STAT_WEEKLY_AVG: Final = "Moyenne hebdomadaire"
-STAT_MONTHLY_AVG: Final = "Moyenne mensuelle"
-STAT_FREQUENCY: Final = "Fréquence (visites)"
-STAT_FIRST_VISIT: Final = "Première visite"
-STAT_LAST_VISIT: Final = "Dernière visite"
+# --- Platforms ------------------------------------------------------------------
+PLATFORMS: Final[list[Platform]] = [Platform.SENSOR]
+
+# --- Export limits ----------------------------------------------------------------
+MAX_HISTORY_RESULTS: Final = 2000  # websocket history page size (records)
+CSV_DELIMITERS: Final[tuple[str, ...]] = (",", ";")
+
+# --- Excel labels (French, the integration's primary language) -------------------
+EXCEL_SUMMARY_SHEET: Final = "Résumé"
+EXCEL_STATS_SECTION: Final = "Statistiques par zone"
+EXCEL_DATA_SECTION: Final = "Changements de zone"

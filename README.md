@@ -1,283 +1,265 @@
 # Suivi de Présence pour Home Assistant
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/FigurinePanda43/Suivi-Position-Home-Assistant)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/FigurinePanda43/Suivi-Position-Home-Assistant/blob/main/CHANGELOG.md)
+[![CI](https://github.com/FigurinePanda43/Suivi-Position-Home-Assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/FigurinePanda43/Suivi-Position-Home-Assistant/actions/workflows/ci.yml)
 
-Une intégration Home Assistant pour suivre les mouvements des personnes entre les zones, avec stockage permanent et exports avancés (CSV/Excel).
+Enregistre **chaque changement de zone** des personnes de votre Home Assistant (maison → travail,
+travail → absent, …) dans un **fichier CSV permanent**, et fournit une **carte Lovelace** pour
+voir qui est où, depuis quand, consulter l'historique par période et **exporter en CSV ou Excel**.
 
-## Pourquoi cette intégration ?
+> Home Assistant ne conserve l'historique que quelques jours. Cette intégration garde tout, sans
+> limite de durée, dans un fichier que vous contrôlez.
 
-**Home Assistant ne conserve que 10 jours d'historique.** Cette intégration résout ce problème en :
-- Stockant **toutes les données** dans un fichier CSV permanent
-- Permettant des exports filtrés par dates et personnes
-- Générant des rapports Excel avec statistiques détaillées
+## Ce que fait (et ne fait pas) l'intégration
 
-## Fonctionnalités
+| Oui | Non |
+|---|---|
+| Qui est dans quelle **zone**, depuis quand | Vitesse, distance parcourue, itinéraires |
+| Historique illimité des **changements de zone** | Stockage de coordonnées GPS dans le temps |
+| Temps passé **par zone** sur une période | Géocodage d'adresses |
+| Exports **CSV** et **Excel** d'une période | |
+| Fraîcheur et précision de la **position GPS** courante (lue sur `person.*`) | |
 
-- **Suivi automatique** : Enregistre chaque changement de zone pour toutes les personnes
-- **Stockage permanent** : CSV qui conserve l'historique complet (sans limite de 10 jours)
-- **Export CSV** : Téléchargez l'historique avec filtres (dates, personnes)
-- **Export Excel** : Rapport avancé avec une feuille par personne et statistiques :
-  - Temps total par zone
-  - Moyennes journalière, hebdomadaire, mensuelle
-  - Fréquence des visites
-- **Tableau de bord** : Visualisez les présences en temps réel
-- **Compatible HACS** : Installation facile via HACS
+Les positions courantes et le trajet des dernières heures sont affichés par la carte `map`
+**native** de Home Assistant à partir des entités `person.*` (voir le tableau de bord d'exemple).
 
 ## Installation
 
 ### Via HACS (recommandé)
 
-1. Ouvrez HACS dans Home Assistant
-2. Cliquez sur "Intégrations"
-3. Cliquez sur les 3 points en haut à droite
-4. Sélectionnez "Dépôts personnalisés"
-5. Ajoutez l'URL de ce dépôt avec la catégorie "Intégration"
-6. Recherchez "Suivi de Présence"
-7. Cliquez sur "Télécharger"
-8. Redémarrez Home Assistant
+1. HACS → *Intégrations* → ⋮ → *Dépôts personnalisés*.
+2. Ajoutez `https://github.com/FigurinePanda43/Suivi-Position-Home-Assistant`, catégorie *Intégration*.
+3. Recherchez **Suivi de Présence**, téléchargez, **redémarrez Home Assistant**.
 
-### Installation manuelle
+### Manuelle
 
-1. Téléchargez le dossier `custom_components/suivi_presence`
-2. Copiez-le dans votre dossier `config/custom_components/`
-3. Redémarrez Home Assistant
+Copiez `custom_components/suivi_presence` dans `config/custom_components/`, puis redémarrez.
 
-### Dépendance optionnelle : openpyxl (export Excel)
+### Prérequis
 
-L'intégration n'a **aucune dépendance obligatoire**. Le suivi de présence, le
-stockage CSV permanent et l'export CSV fonctionnent tels quels.
-
-L'**export Excel** (`.xlsx`) nécessite la bibliothèque `openpyxl`. Si elle est
-absente, l'intégration démarre normalement, un avertissement est inscrit dans
-les logs, et seul le bouton/service Excel renvoie un message d'erreur explicite.
-
-Pour activer l'export Excel :
-
-- **Home Assistant OS / Supervised** : installez le module complémentaire
-  « Terminal & SSH », puis dans le conteneur Core :
-  ```bash
-  docker exec -it homeassistant pip install 'openpyxl>=3.1.0'
-  ```
-- **Home Assistant Container (Docker)** :
-  ```bash
-  docker exec -it <nom_du_conteneur> pip install 'openpyxl>=3.1.0'
-  ```
-- **Home Assistant Core (venv)** :
-  ```bash
-  source /srv/homeassistant/bin/activate && pip install 'openpyxl>=3.1.0'
-  ```
-
-Redémarrez Home Assistant après l'installation.
+- Home Assistant **2024.12** ou plus récent.
+- Des entités `person.*` associées à un traqueur d'appareil (application compagnon, routeur, …).
+- *(Optionnel)* `openpyxl` pour l'export **Excel** — voir [plus bas](#export-excel-openpyxl).
 
 ## Configuration
 
-### Via l'interface (recommandé)
+*Paramètres → Appareils et services → Ajouter une intégration → **Suivi de Présence***.
 
-1. Allez dans **Paramètres** > **Appareils et services**
-2. Cliquez sur **Ajouter une intégration**
-3. Recherchez **Suivi de Présence**
-4. Suivez les instructions de configuration
+| Option | Description |
+|---|---|
+| **Personnes à suivre** | Vide = toutes les personnes, y compris celles créées plus tard. |
+| **Fichier CSV** | Par défaut `suivi_presence_data.csv` dans le dossier de configuration. Le dossier doit exister et être accessible en écriture. |
 
-### Configuration YAML (optionnel)
+Les options sont modifiables ensuite via **Configurer** ; l'intégration se recharge toute seule.
+Une seule instance est possible.
 
-```yaml
-suivi_presence:
-  # Chemin du fichier CSV permanent (défaut: dans le dossier config)
-  csv_path: "/config/suivi_presence_data.csv"
-```
+## Tableau de bord
 
-## Utilisation
+La carte `custom:suivi-presence-card` est **chargée automatiquement** par l'intégration : il n'y a
+**aucune ressource Lovelace à déclarer**. Si vous veniez d'une version 0.1.x, supprimez l'ancienne
+ressource `/local/suivi_presence/suivi-presence-card.js` (*Paramètres → Tableaux de bord → ⋮ →
+Ressources*).
 
-### Carte Lovelace
+### Tableau de bord complet (recommandé)
 
-Ajoutez la carte personnalisée à votre tableau de bord :
+Créez un nouveau tableau de bord vide, ouvrez *⋮ → Éditeur brut* et collez
+[`examples/lovelace-dashboard.yaml`](examples/lovelace-dashboard.yaml). Remplacez `person.jean` /
+`person.marie` par vos entités dans les cartes natives `map`, `history-graph` et `logbook`.
+
+Trois vues :
+
+1. **Présence** — la carte (qui est où, depuis quand, alertes, période, temps par zone,
+   changements, exports) + carte géographique native + frise des zones sur 24 h.
+2. **Historique** — la carte réglée sur 7 jours, frise sur 7 jours, journal natif.
+3. **Technique** — les capteurs, le chemin du CSV, changements par jour.
+
+Aucune carte HACS supplémentaire n'est nécessaire.
+
+### La carte seule
 
 ```yaml
 type: custom:suivi-presence-card
-title: Suivi de Présence
+title: Suivi de Présence        # false pour masquer l'en-tête
+default_period: today          # today | 24h | 7d | 30d | all
+persons:                       # optionnel : limiter l'affichage
+  - person.jean
+show_summary: true             # temps par zone sur la période
+show_history: true             # changements de zone groupés par jour
+show_export: true              # boutons CSV / Excel
+show_details: true             # bloc « Détails techniques » replié
+history_limit: 50              # lignes affichées avant « Afficher plus »
+stale_after_minutes: 120       # position GPS considérée ancienne au-delà
 ```
 
-La carte offre :
-- Vue en temps réel des présences
-- Panel de filtres (dates, personnes)
-- Boutons d'export CSV et Excel
-- Historique récent des mouvements
+Ce que montre la carte :
 
-### Services disponibles
+- **En haut** : état du suivi, bloc « À vérifier » (traqueur indisponible, position GPS ancienne,
+  fichier illisible), puis **une ligne par personne** : zone, « depuis 2 h 15 », « Position mise à
+  jour il y a 5 min · ±25 m ». Un clic ouvre la fiche Home Assistant de la personne.
+- **Période** : Aujourd'hui · 24 h · 7 jours · 30 jours · Tout · Personnalisé, et un filtre par
+  personne. La période pilote le résumé, l'historique **et** les exports.
+- **Temps par zone** : barre segmentée et légende par personne (séjour en cours inclus).
+- **Changements de zone** : « 08:32 · Jean · Maison → Travail · après 12 h 30 à Maison ».
+- **Exporter la période** : **CSV** et **Excel**. Les fichiers sont téléchargés par le navigateur
+  ou l'application compagnon via un lien signé Home Assistant — rien à récupérer dans le dossier
+  de configuration.
 
-#### `suivi_presence.export_csv`
-Exporte l'historique en CSV avec filtres optionnels.
+## Exports
 
-```yaml
-service: suivi_presence.export_csv
-data:
-  filename: "mon_export.csv"      # Optionnel
-  start_date: "2024-01-01"        # Optionnel - Format ISO
-  end_date: "2024-12-31"          # Optionnel - Format ISO
-  persons:                        # Optionnel - Liste des personnes
-    - "Jean"
-    - "Marie"
-```
+### CSV
 
-#### `suivi_presence.export_excel`
-Exporte l'historique en Excel avec statistiques.
+Mêmes colonnes que le fichier de stockage, encodage UTF-8 avec BOM (ouverture directe dans
+Excel), séparateur `,` par défaut ou `;` (Excel en français).
 
-```yaml
-service: suivi_presence.export_excel
-data:
-  filename: "rapport_presence"    # Optionnel (.xlsx ajouté auto)
-  start_date: "2024-01-01"        # Optionnel
-  end_date: "2024-12-31"          # Optionnel
-  persons:                        # Optionnel
-    - "Jean"
-    - "Marie"
-```
-
-**Le fichier Excel contient pour chaque personne :**
-- Une feuille dédiée avec son nom
-- Tableau de statistiques par zone :
-  - Temps total passé
-  - Moyenne journalière
-  - Moyenne hebdomadaire
-  - Moyenne mensuelle
-  - Fréquence (nombre de visites)
-  - Première et dernière visite
-- Tableau des données brutes
-
-#### `suivi_presence.clear_history`
-Efface l'historique enregistré. **Attention : irréversible !**
-
-```yaml
-service: suivi_presence.clear_history
-```
-
-### Endpoints HTTP
-
-| Endpoint | Description |
-|----------|-------------|
-| `/api/suivi_presence/download` | Télécharge le CSV complet |
-| `/api/suivi_presence/download/csv?start_date=...&end_date=...&persons=...` | CSV filtré |
-| `/api/suivi_presence/download/excel?start_date=...&end_date=...&persons=...` | Excel avec stats |
-| `/api/suivi_presence/data` | Données JSON pour le dashboard |
-
-### Entités créées
-
-| Entité | Description |
-|--------|-------------|
-| `sensor.suivi_presence_suivi_presence_main` | Sensor principal avec attributs |
-| `sensor.suivi_presence_personnes_a_domicile` | Compteur personnes à domicile |
-| `sensor.suivi_presence_personnes_absentes` | Compteur personnes absentes |
-| `sensor.suivi_presence_total_des_changements` | Total des changements enregistrés |
-
-## Format du CSV
-
-Le fichier CSV contient les colonnes suivantes :
-
-| Colonne | Description |
-|---------|-------------|
-| `timestamp` | Date et heure du changement (ISO 8601) |
+| Colonne | Contenu |
+|---|---|
+| `timestamp` | Date et heure du changement, ISO 8601 en heure locale avec décalage (`2025-09-01T10:30:00+02:00`) |
 | `person` | Nom de la personne |
-| `previous_zone` | Zone précédente |
-| `new_zone` | Nouvelle zone |
-| `duration_in_previous` | Durée dans la zone précédente (format lisible) |
-| `duration_seconds` | Durée en secondes (pour calculs) |
+| `previous_zone` | Zone quittée (`home`, `not_home` ou nom de zone) |
+| `new_zone` | Zone rejointe |
+| `duration_in_previous` | Temps passé dans la zone quittée, `H:MM:SS` (les heures peuvent dépasser 24) |
+| `duration_seconds` | Même durée en secondes (entier) |
+| `person_entity_id` | Identifiant `person.*` (ajouté en 1.0.0) |
 
-## Exemple de données CSV
+Les lignes écrites par les versions 0.1.x (UTC, durées `1 day, 2:03:04.567890`) restent lues et
+exportées telles quelles.
 
-```csv
-timestamp,person,previous_zone,new_zone,duration_in_previous,duration_seconds
-2024-01-15T08:30:00,Jean,home,work,12:30:00,45000
-2024-01-15T12:00:00,Marie,work,restaurant,03:30:00,12600
-2024-01-15T18:00:00,Jean,work,home,09:30:00,34200
+### Excel (`openpyxl`)
+
+Un vrai classeur `.xlsx` :
+
+- feuille **Résumé** : pour chaque personne et chaque zone, temps total, moyenne par jour, nombre
+  de passages, première et dernière arrivée, séjour en cours ;
+- **une feuille par personne** : mêmes statistiques, puis la liste des changements de zone.
+
+Les dates sont de vraies dates Excel, les durées sont au format `[h]:mm:ss` (triables, sommables),
+les heures sont locales. Filtres automatiques et volets figés activés.
+
+L'intégration n'a **aucune dépendance obligatoire**. L'export Excel nécessite `openpyxl` sur l'hôte
+Home Assistant ; s'il manque, l'intégration démarre normalement, le bouton Excel est grisé avec
+l'explication, et le service renvoie une erreur explicite.
+
+```bash
+# Home Assistant OS / Supervised (module « Terminal & SSH », puis dans le conteneur Core)
+docker exec -it homeassistant pip install 'openpyxl>=3.1.0'
+# Home Assistant Container
+docker exec -it <nom_du_conteneur> pip install 'openpyxl>=3.1.0'
+# Home Assistant Core (venv)
+source /srv/homeassistant/bin/activate && pip install 'openpyxl>=3.1.0'
 ```
 
-## Structure du fichier Excel
+Redémarrez ensuite Home Assistant. Sur Home Assistant OS, l'installation peut devoir être refaite
+après une mise à jour majeure du conteneur Core.
 
-Chaque personne a sa propre feuille contenant :
+## Services
 
-### Section Statistiques
-| Zone | Temps total | Moy. jour | Moy. semaine | Moy. mois | Fréquence | 1ère visite | Dernière visite |
-|------|-------------|-----------|--------------|-----------|-----------|-------------|-----------------|
-| home | 5j 12h 30m | 1h 15m | 8h 45m | 35h | 45 | 2024-01-01 | 2024-01-31 |
-| work | 3j 8h 15m | 45m | 5h 15m | 21h | 22 | 2024-01-02 | 2024-01-30 |
+Toutes les dates sont en **heure locale** ; `start_date` = début du jour, `end_date` = fin du jour.
+`persons` accepte des noms **ou** des identifiants `person.*`.
 
-### Section Données
-| Date/Heure | Zone précédente | Nouvelle zone | Durée |
-|------------|-----------------|---------------|-------|
-| 2024-01-15 08:30 | home | work | 12:30:00 |
+### `suivi_presence.export_csv`
 
-## Zones supportées
+Écrit un CSV dans le dossier de configuration et renvoie `path` et `records`.
 
-L'intégration détecte automatiquement toutes les zones configurées dans Home Assistant :
-- Zones personnalisées (travail, école, gym, etc.)
-- Zone "home" (domicile)
-- État "not_home" (absent/inconnu)
+```yaml
+action: suivi_presence.export_csv
+data:
+  filename: exports/presence_janvier.csv   # optionnel, horodaté si absent
+  start_date: "2025-01-01"
+  end_date: "2025-01-31"
+  persons: ["Jean", "person.marie"]
+  delimiter: ";"                           # "," par défaut
+response_variable: export
+```
+
+### `suivi_presence.export_excel`
+
+Idem pour un classeur `.xlsx` (nécessite `openpyxl`).
+
+### `suivi_presence.clear_history`
+
+Vide le fichier CSV **après l'avoir copié** en `suivi_presence_data.csv.bak-avant-effacement-<date>`.
+Réservé aux administrateurs (un appel depuis une automatisation, sans utilisateur, est accepté).
+Renvoie `backup`.
+
+## Entités
+
+Un appareil **Suivi de Présence** avec quatre capteurs (identifiants identiques aux versions 0.1.x) :
+
+| Entité | État | Attributs utiles |
+|---|---|---|
+| `sensor.suivi_de_presence_suivi_presence` | Nombre de personnes suivies | `persons_home`, `persons_away`, `persons_in_zones`, `last_change`, `csv_path`, `tracking` |
+| `sensor.suivi_de_presence_personnes_a_domicile` | Personnes à la maison | `persons` |
+| `sensor.suivi_de_presence_personnes_absentes` | Personnes hors de toute zone | `persons` |
+| `sensor.suivi_de_presence_total_des_changements` | Nombre de changements enregistrés | `last_change`, `last_person`, `last_from_zone`, `last_to_zone` |
+
+Les capteurs sont mis à jour **immédiatement** à chaque changement (pas de polling).
+
+## API (pour vos propres outils)
+
+Toutes les routes exigent une authentification Home Assistant (jeton ou lien signé).
+
+| Route | Description |
+|---|---|
+| `GET /api/suivi_presence/download[?delimiter=;]` | CSV complet |
+| `GET /api/suivi_presence/download/csv?start_date=…&end_date=…&persons=a,b&delimiter=;` | CSV filtré |
+| `GET /api/suivi_presence/download/excel?start_date=…&end_date=…&persons=…` | Excel |
+| `GET /api/suivi_presence/data?start_date=…&end_date=…&persons=…&limit=200` | JSON : état des personnes, historique, résumé par zone |
+| WebSocket `suivi_presence/overview` | État courant des personnes |
+| WebSocket `suivi_presence/history` (`start`, `end`, `persons`, `limit`) | Changements et résumé par zone d'une période |
+
+## Comportement à connaître
+
+- **Redémarrage** : au démarrage, la zone courante de chaque personne est comparée au dernier
+  enregistrement du CSV. Si elle a changé pendant l'arrêt, un changement est enregistré (daté au
+  redémarrage, mentionné dans les logs). La durée « depuis » n'est pas réinitialisée.
+- **Indisponible / inconnu** : ignorés ; la dernière zone connue est conservée et la personne est
+  signalée dans « À vérifier ». Le retour dans une autre zone enregistre un seul changement.
+- **Statistiques** : temps par zone calculé par intervalles découpés à la période choisie, séjour
+  en cours inclus ; « passages » = arrivées dans la zone pendant la période (+1 si la personne y
+  était déjà au début) ; moyenne = total / nombre de jours de la période.
+- **Format du fichier** : les colonnes ne sont jamais renommées ni supprimées. En 1.0.0 une colonne
+  est ajoutée ; le fichier est migré automatiquement avec une sauvegarde
+  `.bak-migration-<date>`.
 
 ## Dépannage
 
-### L'intégration ne détecte pas mes personnes
+**La carte affiche « Custom element doesn't exist »** — Redémarrez Home Assistant après
+l'installation et rechargez la page (Ctrl+F5). Vérifiez qu'il ne reste pas une ancienne ressource
+manuelle pointant vers `/local/suivi_presence/…` (elle est inutile et peut être supprimée).
 
-Vérifiez que :
-1. Vous avez configuré des entités `person` dans Home Assistant
-2. Ces personnes ont un device_tracker associé
-3. Redémarrez Home Assistant après la configuration
+**Aucune personne suivie** — Créez des entités `person` et associez-leur un traqueur. Vérifiez
+l'option *Personnes à suivre*.
 
-### Le CSV/Excel ne se télécharge pas
+**Le bouton Excel est grisé** — Installez `openpyxl` (voir plus haut) puis redémarrez.
 
-1. Vérifiez les permissions du dossier `/config`
-2. Consultez les logs dans **Paramètres** > **Système** > **Logs**
-3. Vérifiez que vous êtes authentifié (les endpoints requièrent l'auth)
+**Le téléchargement ne démarre pas** — Le lien signé expire après deux minutes ; recliquez. Dans
+l'application compagnon, autorisez les téléchargements si le système le demande. Les erreurs
+détaillées apparaissent dans *Paramètres → Système → Journaux*.
 
-### Erreur au démarrage : « Requirements for suivi_presence not found: ['openpyxl>=3.1.0'] »
+**Les heures de l'Excel sont décalées** — Vérifiez le fuseau horaire de Home Assistant
+(*Paramètres → Système → Général*) : les exports l'utilisent.
 
-Cette erreur concerne les versions ≤ 0.1.0, qui déclaraient `openpyxl` comme
-dépendance obligatoire : si Home Assistant n'arrivait pas à l'installer (hôte
-sans accès Internet, pip bloqué, miroir PyPI injoignable), **toute**
-l'intégration refusait de démarrer.
+## Développement
 
-Depuis la version 0.1.1, `openpyxl` est optionnel : mettez simplement
-l'intégration à jour (HACS ou copie manuelle) et redémarrez Home Assistant.
-Pour retrouver l'export Excel, voir
-[Dépendance optionnelle : openpyxl](#dépendance-optionnelle--openpyxl-export-excel).
+```bash
+python -m venv .venv && . .venv/bin/activate
+pip install -r requirements_test.txt
+pytest                      # 74 tests sur un Home Assistant réel
+ruff check custom_components tests
+npm install jsdom && node tests/card/test_card.mjs   # test de la carte
+```
 
-### L'export Excel renvoie une erreur / le bouton Excel échoue
+La CI exécute pytest, ruff, [hassfest](https://developers.home-assistant.io/blog/2020/04/16/hassfest/)
+et la validation HACS à chaque push.
 
-`openpyxl` n'est pas installé sur l'hôte Home Assistant. Suivez la section
-[Dépendance optionnelle : openpyxl](#dépendance-optionnelle--openpyxl-export-excel),
-puis redémarrez. L'export CSV reste disponible entre-temps.
+## Documentation
 
-### Les statistiques Excel sont incorrectes
-
-Les statistiques sont calculées sur la plage de dates sélectionnée. Pour des moyennes précises, assurez-vous d'avoir suffisamment de données historiques.
-
-## Changelog
-
-### 0.1.1
-- **Correction** : l'intégration ne démarrait pas si Home Assistant n'arrivait
-  pas à installer `openpyxl`
-- `openpyxl` devient une dépendance **optionnelle**, requise uniquement pour
-  l'export Excel
-- Messages d'erreur explicites (service, carte Lovelace, logs) quand l'export
-  Excel est indisponible
-
-### 0.1.0
-- **CSV permanent** comme source de données (contourne limite 10j HA)
-- **Export CSV filtrable** par dates et personnes
-- **Export Excel avancé** avec feuille par personne et statistiques
-- Nouveaux endpoints HTTP avec filtres
-- Carte Lovelace améliorée avec panel de filtres
-
-### 0.0.1
-- Structure de base de l'intégration
-- Suivi des changements de zone
-- Export CSV basique
-- Tableau de bord initial
+- [`CHANGELOG.md`](CHANGELOG.md) — historique et notes de migration.
+- [`docs/AUDIT-V1.0.0.md`](docs/AUDIT-V1.0.0.md) — audit technique de la version bêta.
+- [`docs/REFONTE-TABLEAU-DE-BORD.md`](docs/REFONTE-TABLEAU-DE-BORD.md) — choix de conception du tableau de bord.
+- [`examples/legacy/`](examples/legacy/) — anciens tableau de bord et carte (0.1.x).
 
 ## Licence
 
-MIT License - Voir [LICENSE](LICENSE) pour plus de détails.
-
-## Support
-
-- [Issues GitHub](https://github.com/FigurinePanda43/Suivi-Position-Home-Assistant/issues)
+MIT — voir [LICENSE](LICENSE).

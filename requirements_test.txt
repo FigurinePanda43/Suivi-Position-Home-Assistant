@@ -1,0 +1,4 @@
+# Test environment for the integration (runs a real Home Assistant core in pytest)
+pytest-homeassistant-custom-component>=0.13.300
+openpyxl>=3.1.0
+ruff>=0.6.0

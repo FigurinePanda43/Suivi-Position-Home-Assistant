@@ -59,7 +59,7 @@
     },
     "export_excel": {
       "name": "Export to Excel",
-      "description": "Writes an .xlsx workbook (Summary sheet + one sheet per person with per-zone statistics) to the configuration folder. Requires openpyxl.",
+      "description": "Writes an .xlsx workbook (Summary sheet + one sheet per person with per-zone statistics) to the configuration folder.",
       "fields": {
         "filename": { "name": "File name", "description": "Relative to the configuration folder; .xlsx is appended when missing." },
         "start_date": { "name": "Start date", "description": "First day included (local time)." },

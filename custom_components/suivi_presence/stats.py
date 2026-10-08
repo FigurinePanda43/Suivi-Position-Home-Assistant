@@ -112,6 +112,23 @@ def build_stays(
         if state.since is None or not state.zone:
             continue
         stays.append(Stay(person=state.person, zone=state.zone, start=state.since, end=None))
+
+    # Arrivals whose stay could not be rebuilt (last record of a person with no
+    # current state, broken legacy chain): keep a zero-length stay so that the
+    # visit is still counted.
+    known_starts: dict[tuple[str, str], list[datetime]] = defaultdict(list)
+    for stay in stays:
+        known_starts[(stay.person, stay.zone)].append(stay.start)
+    tolerance = timedelta(seconds=2)
+    for record in history:
+        ts = parse_timestamp(record.get(ATTR_TIMESTAMP))
+        person = record.get(ATTR_PERSON) or ""
+        zone = record.get(ATTR_NEW_ZONE) or ""
+        if ts is None or not person or not zone:
+            continue
+        if any(abs(start - ts) <= tolerance for start in known_starts.get((person, zone), ())):
+            continue
+        stays.append(Stay(person=person, zone=zone, start=ts, end=ts))
     return stays
 
 
@@ -128,10 +145,9 @@ def zone_summary(
 
     * time spent = sum of the stays clipped to the period (ongoing stays are
       clipped to ``min(end, now)``);
-    * visits = number of arrivals (records with ``new_zone == zone``) inside the
-      period, plus one if the person was already in the zone when the period
-      started;
-    * first / last = first and last arrival inside the period.
+    * visits = number of distinct stays in the zone overlapping the period (a
+      stay already running when the period starts counts as one);
+    * first / last = first and last recorded arrival inside the period.
     """
     period_start = start
     period_end = min(end, now) if end else now
@@ -141,7 +157,7 @@ def zone_summary(
 
     result: dict[str, dict[str, ZoneStats]] = defaultdict(lambda: defaultdict(ZoneStats))
 
-    # Time spent, from clipped stays.
+    # Time spent and visits, from clipped stays.
     for stay in build_stays(selected_history, selected_states, now):
         if not stay.person:
             continue
@@ -149,17 +165,17 @@ def zone_summary(
         s_end = stay.end or now
         clip_start = max(s_start, period_start) if period_start else s_start
         clip_end = min(s_end, period_end)
-        if clip_end <= clip_start:
+        if clip_end < clip_start:
             continue
+        if clip_end == clip_start and (stay.end is None or stay.end != stay.start):
+            continue  # real stay entirely outside the period
         stats = result[stay.person][stay.zone]
         stats.seconds += (clip_end - clip_start).total_seconds()
-        if period_start and s_start < period_start:
-            # Already there when the period started: counts as a visit.
-            stats.visits += 1
+        stats.visits += 1
         if stay.end is None:
             stats.ongoing = True
 
-    # Arrivals inside the period.
+    # First / last recorded arrival inside the period.
     for record in selected_history:
         ts = parse_timestamp(record.get(ATTR_TIMESTAMP))
         if ts is None:
@@ -173,7 +189,6 @@ def zone_summary(
         if not person or not zone:
             continue
         stats = result[person][zone]
-        stats.visits += 1
         if stats.first is None or ts < stats.first:
             stats.first = ts
         if stats.last is None or ts > stats.last:

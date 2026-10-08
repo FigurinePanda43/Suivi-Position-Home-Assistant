@@ -24,7 +24,7 @@ from homeassistant.core import (
     ServiceResponse,
     SupportsResponse,
 )
-from homeassistant.exceptions import HomeAssistantError, ServiceValidationError, Unauthorized
+from homeassistant.exceptions import ServiceValidationError, Unauthorized
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_integration
@@ -48,13 +48,7 @@ from .const import (
     SERVICE_EXPORT_EXCEL,
     STATIC_URL_BASE,
 )
-from .export import (
-    ExcelExportUnavailableError,
-    export_to_csv,
-    export_to_excel,
-    filter_history,
-    is_excel_available,
-)
+from .export import export_to_csv, export_to_excel, filter_history
 from .http import async_register_views
 from .tracker import DATA_TRACKERS, PresenceTracker, async_get_tracker
 from .util import parse_user_datetime
@@ -65,7 +59,6 @@ _LOGGER = logging.getLogger(__name__)
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 DATA_VERSION = "version"
-DATA_EXCEL_AVAILABLE = "excel_available"
 
 type SuiviPresenceConfigEntry = ConfigEntry[PresenceTracker]
 
@@ -95,20 +88,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     commands, static files, the Lovelace resource and the services."""
     integration = await async_get_integration(hass, DOMAIN)
     version = integration.version or "0"
-    excel_available = await hass.async_add_executor_job(is_excel_available)
-
-    hass.data[DOMAIN] = {
-        DATA_TRACKERS: {},
-        DATA_VERSION: str(version),
-        DATA_EXCEL_AVAILABLE: excel_available,
-    }
-
-    if not excel_available:
-        _LOGGER.warning(
-            "openpyxl n'est pas installé : l'export Excel sera indisponible "
-            "(le suivi et l'export CSV fonctionnent normalement). Pour l'activer, "
-            "installez openpyxl sur l'hôte Home Assistant puis redémarrez"
-        )
+    hass.data[DOMAIN] = {DATA_TRACKERS: {}, DATA_VERSION: str(version)}
 
     await _async_register_frontend(hass, str(version))
     async_register_views(hass)
@@ -267,14 +247,11 @@ def _async_register_services(hass: HomeAssistant) -> None:
         tracker = _require_tracker(hass)
         start, end, persons = _parse_filters(call)
         path = _export_path(hass, call.data.get(ATTR_FILENAME), "suivi_presence_rapport", ".xlsx")
-        try:
-            content = await hass.async_add_executor_job(
-                lambda: export_to_excel(
-                    tracker.history, tracker.current_states, start=start, end=end, persons=persons
-                )
+        content = await hass.async_add_executor_job(
+            lambda: export_to_excel(
+                tracker.history, tracker.current_states, start=start, end=end, persons=persons
             )
-        except ExcelExportUnavailableError as err:
-            raise HomeAssistantError(str(err)) from err
+        )
         await hass.async_add_executor_job(_write_file, path, content)
         records = len(filter_history(tracker.history, start, end, persons))
         _LOGGER.info("Export Excel : %d enregistrement(s) -> %s", records, path)

@@ -55,7 +55,7 @@ const STRINGS = {
     alert_unavailable: (name) => `${name} : traqueur indisponible, dernière zone connue affichée.`,
     alert_stale: (name, rel) => `${name} : position GPS non mise à jour ${rel}.`,
     alert_load_error: (msg) => `Fichier CSV : ${msg}`,
-    alert_excel: "Export Excel indisponible : openpyxl n'est pas installé sur l'hôte Home Assistant.",
+    alert_excel: "Export Excel indisponible sur ce serveur.",
     period: "Période",
     p_today: "Aujourd'hui",
     p_24h: "24 h",
@@ -82,7 +82,7 @@ const STRINGS = {
     export_excel: "Excel",
     export_started: "Téléchargement démarré",
     export_failed: (m) => `Échec du téléchargement : ${m}`,
-    export_excel_disabled: "openpyxl manquant sur l'hôte Home Assistant",
+    export_excel_disabled: "Export Excel indisponible sur ce serveur",
     details: "Détails techniques",
     d_csv: "Fichier CSV",
     d_records: "Enregistrements",
@@ -117,7 +117,7 @@ const STRINGS = {
     alert_unavailable: (name) => `${name}: tracker unavailable, last known zone shown.`,
     alert_stale: (name, rel) => `${name}: GPS position not updated ${rel}.`,
     alert_load_error: (msg) => `CSV file: ${msg}`,
-    alert_excel: "Excel export unavailable: openpyxl is not installed on the Home Assistant host.",
+    alert_excel: "Excel export unavailable on this server.",
     period: "Period",
     p_today: "Today",
     p_24h: "24 h",
@@ -144,7 +144,7 @@ const STRINGS = {
     export_excel: "Excel",
     export_started: "Download started",
     export_failed: (m) => `Download failed: ${m}`,
-    export_excel_disabled: "openpyxl missing on the Home Assistant host",
+    export_excel_disabled: "Excel export unavailable on this server",
     details: "Technical details",
     d_csv: "CSV file",
     d_records: "Records",
@@ -849,11 +849,11 @@ class SuiviPresenceCard extends HTMLElement {
       <details class="details">
         <summary>${esc(t.details)}</summary>
         <dl>
-          <dt>${esc(t.d_csv)}</dt><dd><code>${esc(this._overview.csv_path)}</code></dd>
+          <dt>${esc(t.d_csv)}</dt><dd><code class="path">${esc(this._overview.csv_path)}</code></dd>
           <dt>${esc(t.d_records)}</dt><dd>${esc(this._overview.total_records)}</dd>
           <dt>${esc(t.d_range)}</dt><dd>${esc(rangeText)}</dd>
           <dt>${esc(t.d_version)}</dt><dd>${esc(this._overview.version || "?")} (carte ${esc(CARD_VERSION)})</dd>
-          <dt>${esc(t.d_services)}</dt><dd><code>suivi_presence.export_csv</code>, <code>suivi_presence.export_excel</code>, <code>suivi_presence.clear_history</code></dd>
+          <dt>${esc(t.d_services)}</dt><dd><code>suivi_presence.export_csv</code> · <code>suivi_presence.export_excel</code> · <code>suivi_presence.clear_history</code></dd>
         </dl>
       </details>`;
   }
@@ -1039,7 +1039,9 @@ class SuiviPresenceCard extends HTMLElement {
       .details summary { cursor: pointer; }
       .details dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 8px 0 0; }
       .details dt { font-weight: 500; }
-      .details dd { margin: 0; word-break: break-all; }
+      .details dd { margin: 0; overflow-wrap: anywhere; }
+      .details dd code { white-space: nowrap; }
+      .details dd code.path { white-space: normal; word-break: break-all; }
       code { font-size: 0.78rem; background: var(--secondary-background-color, rgba(0,0,0,0.04)); padding: 1px 4px; border-radius: 4px; }
 
       @media (max-width: 480px) {

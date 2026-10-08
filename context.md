@@ -66,7 +66,8 @@ suivi-presence/
 │       ├── __init__.py          # Setup domaine (vues, websocket, ressource frontend, services) + entrée
 │       ├── tracker.py           # PresenceTracker : écoute des person.*, CSV, réconciliation au démarrage
 │       ├── stats.py             # Statistiques par intervalles (temps par zone sur une période)
-│       ├── export.py            # Export CSV / Excel (openpyxl optionnel)
+│       ├── export.py            # Export CSV / Excel
+│       ├── xlsx_writer.py       # Écriture .xlsx minimale (bibliothèque standard, sans openpyxl)
 │       ├── http.py              # Vues HTTP (téléchargements, JSON)
 │       ├── websocket.py         # Commandes websocket utilisées par la carte
 │       ├── util.py              # Dates, fuseaux, durées
@@ -120,6 +121,7 @@ suivi-presence/
 | Date | Version | Problème | Solution | Statut |
 |------|---------|----------|----------|--------|
 | 2026-09-13 | 0.1.1 | `openpyxl` obligatoire bloquait le démarrage | Dépendance optionnelle | Corrigé |
+| 2026-10-08 | 1.0.0 | Export Excel grisé sur l'instance réelle (`openpyxl` absent de l'hôte) | `.xlsx` écrit en bibliothèque standard | Corrigé |
 | 2026-10-08 | 1.0.0 | Tous les téléchargements CSV en 500 (`charset` dans `content_type`) | `charset=` séparé | Corrigé |
 | 2026-10-08 | 1.0.0 | Exports filtrés en 500 (dates naïves vs UTC) | `util.parse_user_datetime`, tout en aware | Corrigé |
 | 2026-10-08 | 1.0.0 | Options flow : `TypeError` | `OptionsFlow` sans argument, `self.config_entry` injecté | Corrigé |
@@ -334,7 +336,9 @@ Le code doit :
     (`map`, `history-graph`, `logbook`) pour le reste : aucune dépendance HACS.
   - Téléchargements via chemins signés.
   - Statistiques par intervalles découpés à la période (`stats.py`).
-- **Tests** : `pytest` (74), `ruff`, `node tests/card/test_card.mjs`, CI GitHub Actions.
+  - Export Excel écrit par l'intégration (`xlsx_writer.py`) : aucune dépendance à installer
+    sur l'hôte, plus de bouton grisé.
+- **Tests** : `pytest` (74, dont ouverture du classeur par LibreOffice), `ruff`, `node tests/card/test_card.mjs`, CI GitHub Actions.
 
 ## 11. Contacts et Ressources
 

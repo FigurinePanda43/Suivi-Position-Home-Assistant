@@ -267,7 +267,7 @@ overview.excel_available = false;
 card._overview = structuredClone(overview);
 card._renderExport();
 assert.equal(root.querySelector('[data-kind="excel"]').disabled, true);
-assert.match(text(root.getElementById("export")), /openpyxl/);
+assert.match(text(root.getElementById("export")), /Export Excel indisponible/);
 overview.excel_available = true;
 
 // Clicking a person fires hass-more-info with its entity id.

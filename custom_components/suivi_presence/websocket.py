@@ -31,7 +31,7 @@ def ws_overview(
         connection.send_error(msg["id"], "not_loaded", "Intégration Suivi de Présence non chargée")
         return
     payload = tracker.overview()
-    payload["excel_available"] = hass.data.get(DOMAIN, {}).get("excel_available", False)
+    payload["excel_available"] = True  # kept for the card; no dependency since 1.0.0
     payload["version"] = hass.data.get(DOMAIN, {}).get("version")
     payload["data_range"] = get_date_range_info(tracker.history)
     connection.send_result(msg["id"], payload)

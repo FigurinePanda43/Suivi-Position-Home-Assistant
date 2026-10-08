@@ -61,7 +61,9 @@ bord dans `docs/REFONTE-TABLEAU-DE-BORD.md`.
 - **Export Excel sans dépendance** : le classeur `.xlsx` est écrit par l'intégration elle-même
   (`xlsx_writer.py`, bibliothèque standard uniquement). Plus besoin d'installer `openpyxl` sur
   l'hôte, plus de bouton grisé. Feuille **Résumé** (toutes les personnes), puis une feuille par
-  personne (statistiques + changements), filtres automatiques, volets figés.
+  personne (statistiques + changements), filtres automatiques, volets figés. Statistiques par
+  zone : temps total, moyenne par jour, visites, **moyenne par visite**, première et dernière
+  arrivée, séjour en cours.
 - **Export CSV** : BOM UTF-8 (ouverture directe dans Excel), séparateur `;` optionnel
   (`delimiter`), filtre par nom **ou** par `person.*`.
 - **Services** `export_csv` / `export_excel` : sélecteurs de date, réponse

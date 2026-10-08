@@ -116,7 +116,17 @@ def test_export_to_excel_builds_a_real_workbook(history: list[dict]) -> None:
 
     summary = wb["Résumé"]
     headers = [c.value for c in summary[6]]
-    assert headers[:4] == ["Personne", "Zone", "Temps total", "Moyenne par jour"]
+    assert headers == [
+        "Personne",
+        "Zone",
+        "Temps total",
+        "Moyenne par jour",
+        "Visites",
+        "Moyenne par visite",
+        "Première arrivée",
+        "Dernière arrivée",
+        "En cours",
+    ]
     rows = list(summary.iter_rows(min_row=7, values_only=True))
     jean_home = next(r for r in rows if r[0] == "Jean" and r[1] == "home")
     # Durations are real Excel durations (openpyxl reads "[h]:mm:ss" cells back as timedelta).
@@ -124,6 +134,11 @@ def test_export_to_excel_builds_a_real_workbook(history: list[dict]) -> None:
     # 12 h 30 m 0.5 s before 06:30 UTC + 16:00 UTC -> noon next day (20 h) = 32 h 30 m 0.5 s
     assert jean_home[2] == timedelta(hours=32, minutes=30, milliseconds=500)
     assert summary.cell(row=7, column=3).number_format == "[h]:mm:ss"
+    # Two stays at home: average per visit = total / 2.
+    assert jean_home[4] == 2
+    assert jean_home[5].total_seconds() == pytest.approx(117000.5 / 2, abs=0.01)
+    assert summary.cell(row=7, column=6).number_format == "[h]:mm:ss"
+    assert summary.auto_filter.ref.startswith("A6:I")
 
     jean = wb["Jean"]
     # Find the data table header and check the first data row types.

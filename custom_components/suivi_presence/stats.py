@@ -44,11 +44,20 @@ class ZoneStats:
     last: datetime | None = None
     ongoing: bool = False
 
+    @property
+    def average_visit_seconds(self) -> float | None:
+        """Mean duration of one stay in the zone over the period (None without visit)."""
+        if self.visits <= 0:
+            return None
+        return self.seconds / self.visits
+
     def as_dict(self) -> dict[str, Any]:
         """Serialise for JSON / websocket consumers."""
+        average = self.average_visit_seconds
         return {
             "seconds": round(self.seconds),
             "visits": self.visits,
+            "average_visit_seconds": None if average is None else round(average),
             "first": self.first.isoformat() if self.first else None,
             "last": self.last.isoformat() if self.last else None,
             "ongoing": self.ongoing,

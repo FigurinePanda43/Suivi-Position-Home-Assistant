@@ -18,7 +18,7 @@ voir qui est où, depuis quand, consulter l'historique par période et **exporte
 | Qui est dans quelle **zone**, depuis quand | Vitesse, distance parcourue, itinéraires |
 | Historique illimité des **changements de zone** | Stockage de coordonnées GPS dans le temps |
 | Temps passé **par zone** sur une période | Géocodage d'adresses |
-| Exports **CSV** et **Excel** d'une période | |
+| Exports **CSV** et **Excel** d'une période, sans dépendance à installer | |
 | Fraîcheur et précision de la **position GPS** courante (lue sur `person.*`) | |
 
 Les positions courantes et le trajet des dernières heures sont affichés par la carte `map`
@@ -40,7 +40,7 @@ Copiez `custom_components/suivi_presence` dans `config/custom_components/`, puis
 
 - Home Assistant **2024.12** ou plus récent.
 - Des entités `person.*` associées à un traqueur d'appareil (application compagnon, routeur, …).
-- *(Optionnel)* `openpyxl` pour l'export **Excel** — voir [plus bas](#export-excel-openpyxl).
+- Aucune bibliothèque supplémentaire : l'export Excel est généré par l'intégration elle-même.
 
 ## Configuration
 
@@ -125,32 +125,17 @@ Excel), séparateur `,` par défaut ou `;` (Excel en français).
 Les lignes écrites par les versions 0.1.x (UTC, durées `1 day, 2:03:04.567890`) restent lues et
 exportées telles quelles.
 
-### Excel (`openpyxl`)
+### Excel
 
-Un vrai classeur `.xlsx` :
+Un vrai classeur `.xlsx`, généré par l'intégration **sans aucune dépendance** à installer :
 
 - feuille **Résumé** : pour chaque personne et chaque zone, temps total, moyenne par jour, nombre
   de passages, première et dernière arrivée, séjour en cours ;
 - **une feuille par personne** : mêmes statistiques, puis la liste des changements de zone.
 
 Les dates sont de vraies dates Excel, les durées sont au format `[h]:mm:ss` (triables, sommables),
-les heures sont locales. Filtres automatiques et volets figés activés.
-
-L'intégration n'a **aucune dépendance obligatoire**. L'export Excel nécessite `openpyxl` sur l'hôte
-Home Assistant ; s'il manque, l'intégration démarre normalement, le bouton Excel est grisé avec
-l'explication, et le service renvoie une erreur explicite.
-
-```bash
-# Home Assistant OS / Supervised (module « Terminal & SSH », puis dans le conteneur Core)
-docker exec -it homeassistant pip install 'openpyxl>=3.1.0'
-# Home Assistant Container
-docker exec -it <nom_du_conteneur> pip install 'openpyxl>=3.1.0'
-# Home Assistant Core (venv)
-source /srv/homeassistant/bin/activate && pip install 'openpyxl>=3.1.0'
-```
-
-Redémarrez ensuite Home Assistant. Sur Home Assistant OS, l'installation peut devoir être refaite
-après une mise à jour majeure du conteneur Core.
+les heures sont locales. Filtres automatiques et volets figés activés. Le fichier s'ouvre dans
+Microsoft Excel, LibreOffice Calc, Numbers et Google Sheets.
 
 ## Services
 
@@ -174,7 +159,7 @@ response_variable: export
 
 ### `suivi_presence.export_excel`
 
-Idem pour un classeur `.xlsx` (nécessite `openpyxl`).
+Idem pour un classeur `.xlsx`.
 
 ### `suivi_presence.clear_history`
 
@@ -216,8 +201,8 @@ Toutes les routes exigent une authentification Home Assistant (jeton ou lien sig
 - **Indisponible / inconnu** : ignorés ; la dernière zone connue est conservée et la personne est
   signalée dans « À vérifier ». Le retour dans une autre zone enregistre un seul changement.
 - **Statistiques** : temps par zone calculé par intervalles découpés à la période choisie, séjour
-  en cours inclus ; « passages » = arrivées dans la zone pendant la période (+1 si la personne y
-  était déjà au début) ; moyenne = total / nombre de jours de la période.
+  en cours inclus ; « passages » = nombre de séjours dans la zone recoupant la période (un séjour déjà en
+  cours au début de la période compte pour un) ; moyenne = total / nombre de jours de la période.
 - **Format du fichier** : les colonnes ne sont jamais renommées ni supprimées. En 1.0.0 une colonne
   est ajoutée ; le fichier est migré automatiquement avec une sauvegarde
   `.bak-migration-<date>`.
@@ -230,8 +215,6 @@ manuelle pointant vers `/local/suivi_presence/…` (elle est inutile et peut êt
 
 **Aucune personne suivie** — Créez des entités `person` et associez-leur un traqueur. Vérifiez
 l'option *Personnes à suivre*.
-
-**Le bouton Excel est grisé** — Installez `openpyxl` (voir plus haut) puis redémarrez.
 
 **Le téléchargement ne démarre pas** — Le lien signé expire après deux minutes ; recliquez. Dans
 l'application compagnon, autorisez les téléchargements si le système le demande. Les erreurs

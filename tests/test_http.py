@@ -121,21 +121,6 @@ async def test_excel_download_is_a_real_workbook(
     assert persons_in_summary == {"Jean", "Marie"}
 
 
-async def test_excel_unavailable_returns_503_json(
-    hass: HomeAssistant,
-    setup_integration: MockConfigEntry,
-    hass_client: ClientSessionGenerator,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import sys
-
-    monkeypatch.setitem(sys.modules, "openpyxl", None)
-    client = await hass_client()
-    resp = await client.get("/api/suivi_presence/download/excel")
-    assert resp.status == 503
-    assert "openpyxl" in (await resp.json())["error"]
-
-
 async def test_data_endpoint(
     hass: HomeAssistant, setup_integration: MockConfigEntry, hass_client: ClientSessionGenerator
 ) -> None:

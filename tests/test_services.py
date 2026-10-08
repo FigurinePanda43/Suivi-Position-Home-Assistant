@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 
 from homeassistant.core import Context, HomeAssistant
-from homeassistant.exceptions import HomeAssistantError, ServiceValidationError, Unauthorized
+from homeassistant.exceptions import ServiceValidationError, Unauthorized
 from homeassistant.util import dt as dt_util
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry, MockUser
@@ -87,16 +87,6 @@ async def test_export_excel_service(
     assert response["path"].endswith("rapport.xlsx")
     wb = openpyxl.load_workbook(response["path"])
     assert wb.sheetnames == ["Résumé", "Jean", "Marie"]
-
-
-async def test_export_excel_without_openpyxl(
-    hass: HomeAssistant, setup_integration: MockConfigEntry, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    import sys
-
-    monkeypatch.setitem(sys.modules, "openpyxl", None)
-    with pytest.raises(HomeAssistantError, match="openpyxl"):
-        await hass.services.async_call(DOMAIN, "export_excel", {}, blocking=True)
 
 
 async def test_clear_history_requires_admin(

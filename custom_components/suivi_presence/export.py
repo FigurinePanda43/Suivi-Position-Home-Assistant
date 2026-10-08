@@ -3,18 +3,14 @@
 The CSV export is a faithful copy of the permanent storage (same columns), with
 optional filters. The Excel export is a real ``.xlsx`` workbook: a summary sheet
 plus one sheet per person, with genuine date and duration cells so the file can
-be sorted, filtered and summed in Excel / LibreOffice.
-
-``openpyxl`` is an optional dependency: it is only needed for the Excel export
-and is deliberately NOT declared in ``manifest.json`` so that a failed pip
-install can never prevent the integration from loading.
+be sorted, filtered and summed in Excel / LibreOffice. It is written with the
+standard library only (see ``xlsx_writer.py``): no package to install on the host.
 """
 
 from __future__ import annotations
 
 import csv
 from datetime import datetime
-import importlib.util
 import io
 import logging
 import re
@@ -41,32 +37,23 @@ from .stats import (
     zone_summary,
 )
 from .util import local_naive, parse_duration_seconds, parse_timestamp, period_days
+from .xlsx_writer import (
+    STYLE_DATETIME,
+    STYLE_DATETIME_SHORT,
+    STYLE_DURATION,
+    STYLE_HEADER_BLUE,
+    STYLE_HEADER_GREEN,
+    STYLE_INT,
+    STYLE_NOTE,
+    STYLE_TEXT,
+    STYLE_TITLE,
+    Sheet,
+    Workbook,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
-OPENPYXL_PACKAGE = "openpyxl>=3.1.0"
-
 _INVALID_SHEET_CHARS = re.compile(r"[\[\]:*?/\\]")
-_EXCEL_DURATION_FORMAT = "[h]:mm:ss"
-_EXCEL_DATETIME_FORMAT = "dd/mm/yyyy hh:mm:ss"
-_EXCEL_DATETIME_SHORT_FORMAT = "dd/mm/yyyy hh:mm"
-
-
-class ExcelExportUnavailableError(Exception):
-    """Raised when the Excel export is requested but openpyxl is missing."""
-
-    def __init__(self) -> None:
-        super().__init__(
-            "L'export Excel nécessite la bibliothèque openpyxl, qui n'est pas "
-            "installée. Installez-la sur l'hôte Home Assistant "
-            f"(pip install '{OPENPYXL_PACKAGE}') puis redémarrez Home Assistant. "
-            "L'export CSV reste disponible sans openpyxl."
-        )
-
-
-def is_excel_available() -> bool:
-    """Return True if the Excel export can be used (openpyxl importable)."""
-    return importlib.util.find_spec("openpyxl") is not None
 
 
 # --------------------------------------------------------------------------- #
@@ -228,22 +215,7 @@ def export_to_excel(
     persons: set[str] | list[str] | None = None,
     now: datetime | None = None,
 ) -> bytes:
-    """Build the Excel workbook and return its bytes.
-
-    Raises:
-        ExcelExportUnavailableError: if openpyxl is not installed.
-    """
-    try:
-        from openpyxl import Workbook  # noqa: PLC0415
-        from openpyxl.styles import Alignment, Border, Font, PatternFill, Side  # noqa: PLC0415
-        from openpyxl.utils import get_column_letter  # noqa: PLC0415
-    except ImportError as err:
-        _LOGGER.error(
-            "openpyxl is not installed, Excel export unavailable. Install it with: pip install '%s'",
-            OPENPYXL_PACKAGE,
-        )
-        raise ExcelExportUnavailableError() from err
-
+    """Build the Excel workbook (summary + one sheet per person) and return its bytes."""
     now = now or dt_util.utcnow()
     current_states = current_states or []
     selection = set(persons) if persons else None
@@ -261,50 +233,6 @@ def export_to_excel(
         f"Généré le {dt_util.as_local(now).strftime('%d/%m/%Y à %H:%M')} par Suivi de Présence"
     )
 
-    # Styles
-    title_font = Font(bold=True, size=14)
-    note_font = Font(italic=True, color="666666", size=9)
-    header_font = Font(bold=True, color="FFFFFF")
-    header_fill = PatternFill(start_color="305496", end_color="305496", fill_type="solid")
-    stats_fill = PatternFill(start_color="548235", end_color="548235", fill_type="solid")
-    thin = Side(style="thin", color="BFBFBF")
-    border = Border(left=thin, right=thin, top=thin, bottom=thin)
-    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
-
-    def write_header(ws: Any, row: int, headers: list[str], fill: Any) -> None:
-        for col, text in enumerate(headers, start=1):
-            cell = ws.cell(row=row, column=col, value=text)
-            cell.font = header_font
-            cell.fill = fill
-            cell.border = border
-            cell.alignment = center
-
-    def write_stats_rows(
-        ws: Any, row: int, zones: dict[str, ZoneStats], with_person: str | None
-    ) -> int:
-        for zone, stats in sorted(zones.items(), key=lambda item: -item[1].seconds):
-            col = 1
-            if with_person is not None:
-                ws.cell(row=row, column=col, value=with_person).border = border
-                col += 1
-            ws.cell(row=row, column=col, value=zone).border = border
-            cell = ws.cell(row=row, column=col + 1, value=_excel_duration(stats.seconds))
-            cell.number_format = _EXCEL_DURATION_FORMAT
-            cell.border = border
-            cell = ws.cell(row=row, column=col + 2, value=_excel_duration(stats.seconds / days))
-            cell.number_format = _EXCEL_DURATION_FORMAT
-            cell.border = border
-            ws.cell(row=row, column=col + 3, value=stats.visits).border = border
-            for offset, value in ((4, stats.first), (5, stats.last)):
-                cell = ws.cell(
-                    row=row, column=col + offset, value=local_naive(value) if value else None
-                )
-                cell.number_format = _EXCEL_DATETIME_SHORT_FORMAT
-                cell.border = border
-            ws.cell(row=row, column=col + 6, value="Oui" if stats.ongoing else "").border = border
-            row += 1
-        return row
-
     stats_headers = [
         "Zone",
         "Temps total",
@@ -314,39 +242,6 @@ def export_to_excel(
         "Dernière arrivée",
         "En cours",
     ]
-
-    wb = Workbook()
-    used_names: set[str] = set()
-
-    # ---- Summary sheet ----
-    ws = wb.active
-    ws.title = _safe_sheet_name(EXCEL_SUMMARY_SHEET, used_names)
-    ws["A1"] = "Suivi de Présence — Résumé"
-    ws["A1"].font = title_font
-    ws["A2"] = period_text
-    ws["A3"] = generated_text
-    ws["A3"].font = note_font
-    ws["A4"] = (
-        "Temps au format heures:minutes:secondes (les heures peuvent dépasser 24). "
-        f"Moyennes calculées sur {days:.1f} jour(s)."
-    )
-    ws["A4"].font = note_font
-    write_header(ws, 6, ["Personne", *stats_headers], header_fill)
-    row = 7
-    if summary:
-        for person in person_names:
-            zones = summary.get(person)
-            if zones:
-                row = write_stats_rows(ws, row, zones, person)
-    if row == 7:
-        ws.cell(row=row, column=1, value="Aucune donnée pour cette période")
-        row += 1
-    ws.freeze_panes = "A7"
-    ws.auto_filter.ref = f"A6:H{max(row - 1, 6)}"
-    for col, width in enumerate((22, 20, 14, 16, 10, 18, 18, 10), start=1):
-        ws.column_dimensions[get_column_letter(col)].width = width
-
-    # ---- One sheet per person ----
     data_headers = [
         "Date et heure",
         "Zone précédente",
@@ -354,66 +249,111 @@ def export_to_excel(
         "Durée dans la zone précédente",
         "Durée (secondes)",
     ]
-    for person in person_names:
-        ws = wb.create_sheet(title=_safe_sheet_name(person, used_names))
-        ws["A1"] = f"{EXCEL_STATS_SECTION} — {person}"
-        ws["A1"].font = title_font
-        ws["A2"] = period_text
-        ws["A2"].font = note_font
 
-        write_header(ws, 4, stats_headers, stats_fill)
+    def write_header(sheet: Sheet, row: int, headers: list[str], style: int) -> None:
+        for col, text in enumerate(headers, start=1):
+            sheet.set(row, col, text, style)
+
+    def write_stats_rows(
+        sheet: Sheet, row: int, zones: dict[str, ZoneStats], with_person: str | None
+    ) -> int:
+        for zone, stats in sorted(zones.items(), key=lambda item: -item[1].seconds):
+            col = 1
+            if with_person is not None:
+                sheet.set(row, col, with_person, STYLE_TEXT)
+                col += 1
+            sheet.set(row, col, zone, STYLE_TEXT)
+            sheet.set(row, col + 1, _excel_duration(stats.seconds), STYLE_DURATION)
+            sheet.set(row, col + 2, _excel_duration(stats.seconds / days), STYLE_DURATION)
+            sheet.set(row, col + 3, stats.visits, STYLE_INT)
+            sheet.set(
+                row, col + 4, local_naive(stats.first) if stats.first else "", STYLE_DATETIME_SHORT
+            )
+            sheet.set(
+                row, col + 5, local_naive(stats.last) if stats.last else "", STYLE_DATETIME_SHORT
+            )
+            sheet.set(row, col + 6, "Oui" if stats.ongoing else "", STYLE_TEXT)
+            row += 1
+        return row
+
+    workbook = Workbook()
+    used_names: set[str] = set()
+
+    # ---- Summary sheet ----
+    sheet = workbook.add_sheet(_safe_sheet_name(EXCEL_SUMMARY_SHEET, used_names))
+    sheet.set(1, 1, "Suivi de Présence — Résumé", STYLE_TITLE)
+    sheet.set(2, 1, period_text)
+    sheet.set(3, 1, generated_text, STYLE_NOTE)
+    sheet.set(
+        4,
+        1,
+        "Temps au format heures:minutes:secondes (les heures peuvent dépasser 24). "
+        f"Moyennes calculées sur {days:.1f} jour(s).",
+        STYLE_NOTE,
+    )
+    write_header(sheet, 6, ["Personne", *stats_headers], STYLE_HEADER_BLUE)
+    row = 7
+    for person in person_names:
+        zones = summary.get(person)
+        if zones:
+            row = write_stats_rows(sheet, row, zones, person)
+    if row == 7:
+        sheet.set(row, 1, "Aucune donnée pour cette période")
+        row += 1
+    sheet.freeze_rows = 6
+    sheet.autofilter = f"A6:H{max(row - 1, 6)}"
+    sheet.set_widths((22, 20, 14, 16, 10, 18, 18, 10))
+
+    # ---- One sheet per person ----
+    for person in person_names:
+        sheet = workbook.add_sheet(_safe_sheet_name(person, used_names))
+        sheet.set(1, 1, f"{EXCEL_STATS_SECTION} — {person}", STYLE_TITLE)
+        sheet.set(2, 1, period_text, STYLE_NOTE)
+
+        write_header(sheet, 4, stats_headers, STYLE_HEADER_GREEN)
         row = 5
         zones = summary.get(person, {})
         if zones:
-            row = write_stats_rows(ws, row, zones, None)
+            row = write_stats_rows(sheet, row, zones, None)
         else:
-            ws.cell(row=row, column=1, value="Aucune statistique pour cette période")
+            sheet.set(row, 1, "Aucune statistique pour cette période")
             row += 1
 
         data_title_row = row + 1
-        ws.cell(row=data_title_row, column=1, value=EXCEL_DATA_SECTION).font = title_font
+        sheet.set(data_title_row, 1, EXCEL_DATA_SECTION, STYLE_TITLE)
         header_row = data_title_row + 1
-        write_header(ws, header_row, data_headers, header_fill)
+        write_header(sheet, header_row, data_headers, STYLE_HEADER_BLUE)
         row = header_row + 1
         for record in filtered:
             if record.get(ATTR_PERSON) != person:
                 continue
             ts = parse_timestamp(record.get(ATTR_TIMESTAMP))
-            cell = ws.cell(
-                row=row, column=1, value=local_naive(ts) if ts else record.get(ATTR_TIMESTAMP)
-            )
-            cell.number_format = _EXCEL_DATETIME_FORMAT
-            cell.border = border
-            ws.cell(row=row, column=2, value=record.get(ATTR_PREVIOUS_ZONE, "")).border = border
-            ws.cell(row=row, column=3, value=record.get(ATTR_NEW_ZONE, "")).border = border
+            if ts is not None:
+                sheet.set(row, 1, local_naive(ts), STYLE_DATETIME)
+            else:
+                sheet.set(row, 1, record.get(ATTR_TIMESTAMP, ""), STYLE_TEXT)
+            sheet.set(row, 2, record.get(ATTR_PREVIOUS_ZONE, ""), STYLE_TEXT)
+            sheet.set(row, 3, record.get(ATTR_NEW_ZONE, ""), STYLE_TEXT)
             seconds = parse_duration_seconds(record)
-            cell = ws.cell(row=row, column=4, value=_excel_duration(seconds))
-            cell.number_format = _EXCEL_DURATION_FORMAT
-            cell.border = border
-            cell = ws.cell(
-                row=row, column=5, value=int(round(seconds)) if seconds is not None else None
+            sheet.set(
+                row, 4, _excel_duration(seconds) if seconds is not None else "", STYLE_DURATION
             )
-            cell.border = border
+            sheet.set(row, 5, int(round(seconds)) if seconds is not None else "", STYLE_INT)
             row += 1
         if row == header_row + 1:
-            ws.cell(row=row, column=1, value="Aucun changement de zone sur la période")
+            sheet.set(row, 1, "Aucun changement de zone sur la période")
             row += 1
-        ws.auto_filter.ref = f"A{header_row}:E{max(row - 1, header_row)}"
-        for col, width in enumerate((20, 18, 18, 26, 16, 18, 18, 10), start=1):
-            ws.column_dimensions[get_column_letter(col)].width = width
+        sheet.autofilter = f"A{header_row}:E{max(row - 1, header_row)}"
+        sheet.set_widths((20, 18, 18, 26, 16, 18, 18, 10))
 
-    output = io.BytesIO()
-    wb.save(output)
-    return output.getvalue()
+    return workbook.to_bytes()
 
 
 __all__ = [
-    "ExcelExportUnavailableError",
     "export_to_csv",
     "export_to_excel",
     "filter_history",
     "get_date_range_info",
     "get_unique_persons",
     "get_unique_zones",
-    "is_excel_available",
 ]

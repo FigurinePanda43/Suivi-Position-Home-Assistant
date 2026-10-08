@@ -21,7 +21,7 @@ const { JSDOM } = require("jsdom");
 const cardPath = path.resolve("custom_components/suivi_presence/www/suivi-presence-card.js");
 const source = readFileSync(cardPath, "utf8");
 
-const dom = new JSDOM(`<!DOCTYPE html><body></body>`, { runScripts: "outside-only", pretendToBeVisual: true });
+const dom = new JSDOM(`<!DOCTYPE html><body></body>`, { runScripts: "outside-only", pretendToBeVisual: true, url: "http://localhost/" });
 const { window } = dom;
 // <ha-card> / <ha-icon> are unknown elements in jsdom: fine, they render as inline elements.
 window.eval(source);
@@ -38,6 +38,12 @@ const overview = {
   csv_path: "/config/suivi_presence_data.csv",
   load_error: null,
   data_range: { start_date: twoHoursAgo, end_date: nowIso, total_records: 3 },
+  last_record: {
+    timestamp: "2025-09-01T18:00:00+02:00",
+    person: "Jean",
+    previous_zone: "Travail",
+    new_zone: "home",
+  },
   persons: [
     {
       entity_id: "person.jean",
@@ -165,7 +171,9 @@ assert.match(hist, /2 sur 3 changements/);
 assert.ok(root.querySelector('[data-action="more"]'), "show more button");
 assert.equal(root.querySelectorAll(".hist-row").length, 2);
 
-// Export bar and details.
+// Export bar sits right under the filters (before summary/history), then details.
+const order = [...root.querySelectorAll(".card-content > div")].map((d) => d.id);
+assert.deepEqual([...order], ["header", "alerts", "persons", "period", "export", "summary", "history", "details"]);
 assert.match(text(root.getElementById("export")), /Exporter la période · Aujourd'hui/);
 assert.equal(root.querySelector('[data-kind="excel"]').disabled, false);
 assert.match(text(root.getElementById("details")), /suivi_presence_data\.csv/);
@@ -309,6 +317,44 @@ en.hass = { ...hass, language: "en", locale: { language: "en" } };
 await tick();
 await tick();
 assert.match(text(en.shadowRoot.getElementById("header")), /Tracking active · 2 persons/);
+
+// Empty period: explain, recall the last change, offer to widen the period.
+const emptyCard = window.document.createElement("suivi-presence-card");
+emptyCard.setConfig({ title: "Empty", default_period: "today" });
+window.document.body.appendChild(emptyCard);
+const emptyCalls = [];
+emptyCard.hass = {
+  ...hass,
+  async callWS(msg) {
+    emptyCalls.push(msg);
+    if (msg.type === "suivi_presence/overview") return structuredClone(overview);
+    if (msg.type === "suivi_presence/history") return { start: null, end: null, total: 0, truncated: false, records: [], summary: {} };
+    throw new Error("unexpected");
+  },
+};
+await tick();
+await tick();
+const emptyText = text(emptyCard.shadowRoot.getElementById("history"));
+assert.match(emptyText, /Aucun changement de zone depuis minuit/);
+assert.match(emptyText, /Dernier changement enregistré : 01\/09\/2025 \d{2}:\d{2} — Jean, Travail → Maison/);
+assert.match(emptyText, /3 enregistrements au total/);
+const widen = emptyCard.shadowRoot.querySelector('#history [data-action="period"][data-period="7d"]');
+assert.ok(widen, "widen chip offered");
+emptyCalls.length = 0;
+widen.click();
+await tick();
+assert.equal(emptyCalls.find((c) => c.type === "suivi_presence/history")?.start?.length, 25);
+assert.ok(emptyCard.shadowRoot.querySelector('#period [data-period="7d"]').classList.contains("active"));
+
+// The chosen period is remembered per browser and restored by a new card instance
+// with the same config; a different configured default starts fresh.
+assert.ok(window.localStorage.getItem("suivi-presence-card:Empty:today"), "period saved");
+const restored = window.document.createElement("suivi-presence-card");
+restored.setConfig({ title: "Empty", default_period: "today" });
+assert.equal(restored._period, "7d");
+const fresh = window.document.createElement("suivi-presence-card");
+fresh.setConfig({ title: "Empty", default_period: "30d" });
+assert.equal(fresh._period, "30d");
 
 // Config validation.
 assert.throws(() => window.document.createElement("suivi-presence-card").setConfig({ default_period: "yesterday" }));

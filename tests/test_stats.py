@@ -87,6 +87,8 @@ def test_summary_as_dict_is_json_friendly() -> None:
     summary = zone_summary(HISTORY, STATES, start=None, end=None, persons=None, now=NOW)
     data = summary_as_dict(summary)
     assert data["Jean"]["Travail"]["seconds"] == 36000
+    assert data["Jean"]["Travail"]["average_visit_seconds"] == 36000
+    assert data["Jean"]["home"]["average_visit_seconds"] == 14 * 3600  # 28 h over 2 stays
     assert data["Jean"]["Travail"]["first"] == (T0 + timedelta(hours=8)).isoformat()
     assert isinstance(data["Jean"]["home"]["ongoing"], bool)
 
@@ -103,4 +105,10 @@ def test_records_without_duration_count_as_visits_only() -> None:
     summary = zone_summary(history, [], start=None, end=None, persons=None, now=NOW)
     assert summary["Jean"]["Travail"].visits == 1
     assert summary["Jean"]["Travail"].seconds == 0
+    assert summary["Jean"]["Travail"].average_visit_seconds == 0
+    assert summary["Jean"]["Travail"].as_dict()["average_visit_seconds"] == 0
+    from custom_components.suivi_presence.stats import ZoneStats
+
+    assert ZoneStats().average_visit_seconds is None
+    assert ZoneStats().as_dict()["average_visit_seconds"] is None
     assert "home" not in summary["Jean"]

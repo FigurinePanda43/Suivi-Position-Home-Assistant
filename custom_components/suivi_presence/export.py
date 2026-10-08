@@ -238,6 +238,7 @@ def export_to_excel(
         "Temps total",
         "Moyenne par jour",
         "Visites",
+        "Moyenne par visite",
         "Première arrivée",
         "Dernière arrivée",
         "En cours",
@@ -266,13 +267,20 @@ def export_to_excel(
             sheet.set(row, col + 1, _excel_duration(stats.seconds), STYLE_DURATION)
             sheet.set(row, col + 2, _excel_duration(stats.seconds / days), STYLE_DURATION)
             sheet.set(row, col + 3, stats.visits, STYLE_INT)
+            average = stats.average_visit_seconds
             sheet.set(
-                row, col + 4, local_naive(stats.first) if stats.first else "", STYLE_DATETIME_SHORT
+                row,
+                col + 4,
+                _excel_duration(average) if average is not None else "",
+                STYLE_DURATION,
             )
             sheet.set(
-                row, col + 5, local_naive(stats.last) if stats.last else "", STYLE_DATETIME_SHORT
+                row, col + 5, local_naive(stats.first) if stats.first else "", STYLE_DATETIME_SHORT
             )
-            sheet.set(row, col + 6, "Oui" if stats.ongoing else "", STYLE_TEXT)
+            sheet.set(
+                row, col + 6, local_naive(stats.last) if stats.last else "", STYLE_DATETIME_SHORT
+            )
+            sheet.set(row, col + 7, "Oui" if stats.ongoing else "", STYLE_TEXT)
             row += 1
         return row
 
@@ -301,8 +309,8 @@ def export_to_excel(
         sheet.set(row, 1, "Aucune donnée pour cette période")
         row += 1
     sheet.freeze_rows = 6
-    sheet.autofilter = f"A6:H{max(row - 1, 6)}"
-    sheet.set_widths((22, 20, 14, 16, 10, 18, 18, 10))
+    sheet.autofilter = f"A6:I{max(row - 1, 6)}"
+    sheet.set_widths((22, 20, 14, 16, 10, 18, 18, 18, 10))
 
     # ---- One sheet per person ----
     for person in person_names:
@@ -344,7 +352,7 @@ def export_to_excel(
             sheet.set(row, 1, "Aucun changement de zone sur la période")
             row += 1
         sheet.autofilter = f"A{header_row}:E{max(row - 1, header_row)}"
-        sheet.set_widths((20, 18, 18, 26, 16, 18, 18, 10))
+        sheet.set_widths((20, 18, 18, 26, 16, 18, 18, 10, 10))
 
     return workbook.to_bytes()
 

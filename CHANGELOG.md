@@ -7,6 +7,32 @@ adhère au [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Non publié]
 
+## [1.0.2] - 2026-10-08
+
+### Ajouté
+- **Excel : colonne « Moyenne par visite »** (durée moyenne d'un séjour dans la zone sur la
+  période, format `[h]:mm:ss`) dans la feuille Résumé et dans chaque feuille personne ; valeur
+  aussi exposée dans le résumé websocket (`average_visit_seconds`).
+
+### Modifié
+- Carte : les boutons d'export CSV / Excel sont placés **juste sous les filtres** de période et de
+  personnes, avant le résumé et l'historique, pour rester accessibles sans faire défiler.
+- Carte : une période sans changement l'explique (« Aucun changement depuis minuit »), rappelle le
+  dernier changement enregistré et le nombre total d'enregistrements, et propose d'élargir à
+  7 jours ; la période choisie est **mémorisée par le navigateur**.
+
+## [1.0.1] - 2026-10-08
+
+### Modifié
+- **Export Excel sans dépendance** : le classeur `.xlsx` est écrit par l'intégration elle-même
+  (`xlsx_writer.py`, bibliothèque standard uniquement). Plus besoin d'installer `openpyxl` sur
+  l'hôte Home Assistant, plus de bouton Excel grisé. Validé dans les tests par relecture avec
+  openpyxl et par une ouverture avec LibreOffice.
+- Statistique « visites » : nombre de séjours dans la zone recoupant la période (un séjour déjà
+  en cours au début, ou sans arrivée enregistrée, compte pour un).
+- Carte : noms des services lisibles dans « Détails techniques » (plus de coupure au milieu d'un
+  mot).
+
 ## [1.0.0] - 2026-10-08
 
 Première version stable. Audit complet dans `docs/AUDIT-V1.0.0.md`, refonte du tableau de
@@ -55,10 +81,8 @@ bord dans `docs/REFONTE-TABLEAU-DE-BORD.md`.
   résumé par zone).
 - **Statistiques par intervalles** (`stats.py`) : temps par zone exact pour n'importe quelle
   période, séjour en cours inclus.
-- **Export Excel sans dépendance** : le classeur `.xlsx` est écrit par l'intégration elle-même
-  (`xlsx_writer.py`, bibliothèque standard uniquement). Plus besoin d'installer `openpyxl` sur
-  l'hôte, plus de bouton grisé. Feuille **Résumé** (toutes les personnes), puis une feuille par
-  personne (statistiques + changements), filtres automatiques, volets figés.
+- **Export Excel** : feuille **Résumé** (toutes les personnes), puis une feuille par personne
+  (statistiques par zone + changements), filtres automatiques, volets figés.
 - **Export CSV** : BOM UTF-8 (ouverture directe dans Excel), séparateur `;` optionnel
   (`delimiter`), filtre par nom **ou** par `person.*`.
 - **Services** `export_csv` / `export_excel` : sélecteurs de date, réponse
@@ -73,7 +97,7 @@ bord dans `docs/REFONTE-TABLEAU-DE-BORD.md`.
 - Nouveau tableau de bord d'exemple (`examples/lovelace-dashboard.yaml`) en trois vues
   (Présence / Historique / Technique) avec les cartes natives `map`, `history-graph`,
   `logbook`. Anciens fichiers conservés dans `examples/legacy/`.
-- Tests automatisés (`tests/`, 74 tests sur un Home Assistant réel, dont une ouverture du classeur Excel par LibreOffice, + test jsdom de la carte),
+- Tests automatisés (`tests/`, pytest sur un Home Assistant réel + test jsdom de la carte),
   configuration `ruff`, CI GitHub Actions (pytest, ruff, hassfest, validation HACS, syntaxe JS).
 - `manifest.json` : `single_config_entry`, `integration_type: service`, dépendances `http`,
   `frontend`, `websocket_api` déclarées.

@@ -1,6 +1,6 @@
 # Context - Intégration Suivi de Présence pour Home Assistant
 
-## Version actuelle : 1.0.0
+## Version actuelle : 1.0.2
 
 ---
 
@@ -350,4 +350,4 @@ Le code doit :
 
 ---
 
-*Dernière mise à jour : Version 1.0.0*
+*Dernière mise à jour : Version 1.0.2*

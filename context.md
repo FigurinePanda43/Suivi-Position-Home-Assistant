@@ -1,6 +1,6 @@
 # Context - Intégration Suivi de Présence pour Home Assistant
 
-## Version actuelle : 0.1.0
+## Version actuelle : 1.0.0
 
 ---
 
@@ -63,26 +63,30 @@ Cette intégration Home Assistant permet de suivre les changements de zone de to
 suivi-presence/
 ├── custom_components/
 │   └── suivi_presence/
-│       ├── __init__.py          # Point d'entrée + PresenceTracker
-│       ├── manifest.json        # Métadonnées (version, dépendances)
-│       ├── const.py             # Constantes et configuration
-│       ├── config_flow.py       # Configuration UI
-│       ├── sensor.py            # Entités sensor
-│       ├── export.py            # Module d'export CSV/Excel [NEW v0.1.0]
+│       ├── __init__.py          # Setup domaine (vues, websocket, ressource frontend, services) + entrée
+│       ├── tracker.py           # PresenceTracker : écoute des person.*, CSV, réconciliation au démarrage
+│       ├── stats.py             # Statistiques par intervalles (temps par zone sur une période)
+│       ├── export.py            # Export CSV / Excel (openpyxl optionnel)
+│       ├── http.py              # Vues HTTP (téléchargements, JSON)
+│       ├── websocket.py         # Commandes websocket utilisées par la carte
+│       ├── util.py              # Dates, fuseaux, durées
+│       ├── sensor.py            # 4 capteurs (push)
+│       ├── config_flow.py       # Config flow + options flow
+│       ├── const.py             # Constantes
+│       ├── manifest.json        # Métadonnées (version unique de référence)
 │       ├── services.yaml        # Définition des services
-│       ├── strings.json         # Traductions
-│       ├── translations/
-│       │   ├── fr.json          # Traductions françaises
-│       │   └── en.json          # Traductions anglaises
+│       ├── strings.json         # Traductions (source)
+│       ├── translations/        # fr.json, en.json
 │       └── www/
-│           └── suivi-presence-card.js  # Carte Lovelace avec filtres
+│           └── suivi-presence-card.js  # Carte Lovelace (JS natif, auto-chargée)
+├── tests/                       # pytest sur un Home Assistant réel + tests/card (jsdom)
+├── docs/                        # Audit V1.0.0, refonte du tableau de bord
 ├── examples/
-│   └── lovelace-dashboard.yaml  # Exemple de configuration
-├── hacs.json                    # Configuration HACS
-├── README.md                    # Documentation principale
-├── LICENSE                      # Licence MIT
-├── CHANGELOG.md                 # Journal des modifications
-└── context.md                   # Ce fichier
+│   ├── lovelace-dashboard.yaml  # Tableau de bord 1.0.0 (3 vues)
+│   └── legacy/                  # Anciens fichiers 0.1.x (retour arrière)
+├── .github/workflows/ci.yml     # pytest, ruff, hassfest, HACS, syntaxe JS
+├── hacs.json, pyproject.toml, requirements_test.txt
+├── README.md, CHANGELOG.md, LICENSE, context.md
 ```
 
 ---
@@ -115,7 +119,13 @@ suivi-presence/
 
 | Date | Version | Problème | Solution | Statut |
 |------|---------|----------|----------|--------|
-| - | - | - | - | - |
+| 2026-09-13 | 0.1.1 | `openpyxl` obligatoire bloquait le démarrage | Dépendance optionnelle | Corrigé |
+| 2026-10-08 | 1.0.0 | Tous les téléchargements CSV en 500 (`charset` dans `content_type`) | `charset=` séparé | Corrigé |
+| 2026-10-08 | 1.0.0 | Exports filtrés en 500 (dates naïves vs UTC) | `util.parse_user_datetime`, tout en aware | Corrigé |
+| 2026-10-08 | 1.0.0 | Options flow : `TypeError` | `OptionsFlow` sans argument, `self.config_entry` injecté | Corrigé |
+| 2026-10-08 | 1.0.0 | Vues HTTP figées après rechargement | Tracker résolu à la requête | Corrigé |
+| 2026-10-08 | 1.0.0 | Téléchargement `blob:` KO sur appli mobile | Chemins signés `auth/sign_path` | Corrigé |
+| 2026-10-08 | 1.0.0 | Durées fausses après redémarrage, transitions manquées | Réconciliation CSV ↔ états au démarrage | Corrigé |
 
 ---
 
@@ -175,11 +185,15 @@ Si une nouvelle version nécessite des changements de structure :
    - Préserve toutes les données existantes
 3. **Documenter** la migration dans le CHANGELOG
 
-### Structure CSV actuelle (v0.1.0)
+### Structure CSV actuelle (v1.0.0)
 
 ```
-timestamp,person,previous_zone,new_zone,duration_in_previous,duration_seconds
+timestamp,person,previous_zone,new_zone,duration_in_previous,duration_seconds,person_entity_id
 ```
+
+Valeurs écrites en 1.0.0 : `timestamp` en heure locale avec décalage et sans microsecondes,
+`duration_in_previous` en `H:MM:SS`, `duration_seconds` entier. Les anciennes valeurs (UTC,
+`str(timedelta)`, flottants) restent lues (`util.parse_timestamp`, `util.parse_duration_seconds`).
 
 ### Historique des structures
 
@@ -187,6 +201,7 @@ timestamp,person,previous_zone,new_zone,duration_in_previous,duration_seconds
 |---------|----------|-------|
 | 0.0.1 | timestamp, person, previous_zone, new_zone, duration_in_previous | Structure initiale |
 | 0.1.0 | + duration_seconds | Ajout colonne pour calculs |
+| 1.0.0 | + person_entity_id | Identifiant stable de la personne ; migration automatique de l'en-tête avec sauvegarde `.bak-migration-<date>` |
 
 ### Code de chargement sécurisé
 
@@ -237,17 +252,18 @@ Le code doit :
 - [x] Carte Lovelace améliorée avec panel de filtres
 - [x] Service export_excel
 
-### Version 0.2.0 (prévue)
-- [ ] Panel sidebar dédié
-- [ ] Graphiques d'historique dans le dashboard
-- [ ] Zones favorites / zones ignorées
-- [ ] Notifications de changement de zone
+### Idées pour après la 1.0.0
+- [ ] Zones ignorées (ex. ne pas enregistrer les passages < 2 min)
+- [ ] Notifications de changement de zone (blueprint)
+- [ ] Colonnes GPS optionnelles dans le CSV (à discuter : vie privée)
 
-### Version 1.0.0 (cible)
-- [ ] Version stable et testée en production
-- [ ] Tests unitaires complets
-- [ ] Documentation complète
-- [ ] Publication sur HACS default repository
+### Version 1.0.0 (cette branche)
+- [x] Audit complet (`docs/AUDIT-V1.0.0.md`) et correction de tous les points bloquants / importants
+- [x] Tests automatisés sur un Home Assistant réel (74) + test jsdom de la carte
+- [x] Documentation réécrite, CHANGELOG, notes de migration
+- [x] Carte Lovelace auto-chargée, tableau de bord à trois niveaux
+- [ ] Validation manuelle sur une instance réelle (navigateur + appli compagnon) avant le tag
+- [ ] Publication sur le dépôt HACS par défaut (après la 1.0.0)
 
 ---
 
@@ -307,6 +323,19 @@ Le code doit :
 
 ---
 
+### Session 3 - Audit et refonte 1.0.0
+- **Date** : 2026-10-08
+- **Objectif** : audit de maturité, correction des bugs bloquants, refonte du tableau de bord
+- **Décisions d'architecture** :
+  - Enregistrement « domaine » unique (`async_setup`) pour les vues HTTP, le websocket, le
+    statique et la ressource frontend ; une entrée de configuration unique (`single_config_entry`).
+  - Données volumineuses hors des attributs d'entités : websocket pour la carte.
+  - Carte Lovelace en JS natif sans build, auto-chargée (`add_extra_js_url`), cartes natives
+    (`map`, `history-graph`, `logbook`) pour le reste : aucune dépendance HACS.
+  - Téléchargements via chemins signés.
+  - Statistiques par intervalles découpés à la période (`stats.py`).
+- **Tests** : `pytest` (74), `ruff`, `node tests/card/test_card.mjs`, CI GitHub Actions.
+
 ## 11. Contacts et Ressources
 
 ### Documentation Home Assistant
@@ -317,4 +346,4 @@ Le code doit :
 
 ---
 
-*Dernière mise à jour : Version 0.1.0*
+*Dernière mise à jour : Version 1.0.0*

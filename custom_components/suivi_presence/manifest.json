@@ -3,10 +3,12 @@
   "name": "Suivi de Présence",
   "codeowners": ["@FigurinePanda43"],
   "config_flow": true,
-  "dependencies": ["person", "zone"],
+  "dependencies": ["http", "frontend", "websocket_api", "person", "zone"],
   "documentation": "https://github.com/FigurinePanda43/Suivi-Position-Home-Assistant",
+  "integration_type": "service",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/FigurinePanda43/Suivi-Position-Home-Assistant/issues",
   "requirements": [],
-  "version": "0.1.1"
+  "single_config_entry": true,
+  "version": "1.0.0"
 }

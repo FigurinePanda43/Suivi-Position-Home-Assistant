@@ -1,66 +1,81 @@
 {
+  "title": "Suivi de Présence",
   "config": {
     "step": {
       "user": {
         "title": "Configuration du Suivi de Présence",
-        "description": "Configurez le suivi des mouvements entre zones pour les personnes.",
+        "description": "Chaque changement de zone des personnes est enregistré dans un fichier CSV permanent.",
         "data": {
-          "scan_interval": "Intervalle de vérification (secondes)",
-          "csv_path": "Chemin du fichier CSV (optionnel)"
+          "tracked_persons": "Personnes à suivre",
+          "csv_path": "Fichier CSV"
+        },
+        "data_description": {
+          "tracked_persons": "Laissez vide pour suivre toutes les personnes, y compris celles créées plus tard.",
+          "csv_path": "Chemin du fichier de données. Par défaut : suivi_presence_data.csv dans le dossier de configuration."
         }
       }
     },
     "error": {
-      "invalid_path": "Chemin de fichier invalide",
-      "cannot_connect": "Impossible de se connecter"
+      "invalid_path": "Le dossier n'existe pas",
+      "not_writable": "Le fichier ou le dossier n'est pas accessible en écriture",
+      "not_csv": "Le fichier doit porter l'extension .csv"
     },
     "abort": {
-      "already_configured": "L'intégration est déjà configurée"
+      "single_instance_allowed": "L'intégration est déjà configurée (une seule instance possible)"
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Options du Suivi de Présence",
+        "description": "Les modifications prennent effet immédiatement (l'intégration est rechargée).",
         "data": {
-          "scan_interval": "Intervalle de vérification (secondes)",
-          "tracked_persons": "Personnes à suivre"
+          "tracked_persons": "Personnes à suivre",
+          "csv_path": "Fichier CSV"
+        },
+        "data_description": {
+          "tracked_persons": "Laissez vide pour suivre toutes les personnes.",
+          "csv_path": "Changer le chemin ne déplace pas le fichier existant : copiez-le vous-même si besoin."
         }
       }
+    },
+    "error": {
+      "invalid_path": "Le dossier n'existe pas",
+      "not_writable": "Le fichier ou le dossier n'est pas accessible en écriture",
+      "not_csv": "Le fichier doit porter l'extension .csv"
     }
   },
   "services": {
     "export_csv": {
       "name": "Exporter en CSV",
-      "description": "Exporte l'historique des mouvements en fichier CSV.",
+      "description": "Écrit l'historique des changements de zone dans un fichier CSV du dossier de configuration, avec filtres optionnels. Renvoie le chemin du fichier et le nombre de lignes.",
       "fields": {
-        "filename": {
-          "name": "Nom du fichier",
-          "description": "Nom du fichier CSV à créer (optionnel)"
-        }
+        "filename": { "name": "Nom du fichier", "description": "Relatif au dossier de configuration. Horodaté automatiquement si vide." },
+        "start_date": { "name": "Date de début", "description": "Premier jour inclus (heure locale)." },
+        "end_date": { "name": "Date de fin", "description": "Dernier jour inclus (heure locale)." },
+        "persons": { "name": "Personnes", "description": "Noms ou identifiants person.* à inclure. Vide = toutes." },
+        "delimiter": { "name": "Séparateur", "description": "Virgule (standard) ou point-virgule (Excel en français)." }
+      }
+    },
+    "export_excel": {
+      "name": "Exporter en Excel",
+      "description": "Écrit un classeur .xlsx (feuille Résumé + une feuille par personne avec statistiques par zone) dans le dossier de configuration. Nécessite openpyxl.",
+      "fields": {
+        "filename": { "name": "Nom du fichier", "description": "Relatif au dossier de configuration ; l'extension .xlsx est ajoutée si besoin." },
+        "start_date": { "name": "Date de début", "description": "Premier jour inclus (heure locale)." },
+        "end_date": { "name": "Date de fin", "description": "Dernier jour inclus (heure locale)." },
+        "persons": { "name": "Personnes", "description": "Noms ou identifiants person.* à inclure. Vide = toutes." }
       }
     },
     "clear_history": {
       "name": "Effacer l'historique",
-      "description": "Efface tout l'historique des mouvements enregistrés."
+      "description": "Vide le fichier CSV après en avoir fait une copie de sauvegarde (.bak-avant-effacement-<date>). Réservé aux administrateurs."
     }
   },
-  "entity": {
-    "sensor": {
-      "presence_tracker": {
-        "name": "Suivi de présence",
-        "state_attributes": {
-          "persons_home": {
-            "name": "Personnes à domicile"
-          },
-          "persons_away": {
-            "name": "Personnes absentes"
-          },
-          "last_change": {
-            "name": "Dernier changement"
-          }
-        }
-      }
-    }
+  "exceptions": {
+    "not_loaded": { "message": "L'intégration Suivi de Présence n'est pas chargée." },
+    "invalid_date": { "message": "Date invalide : utilisez le format AAAA-MM-JJ ou ISO 8601." },
+    "invalid_range": { "message": "La date de fin est antérieure à la date de début." },
+    "invalid_path": { "message": "Le fichier doit se trouver dans le dossier de configuration." }
   }
 }

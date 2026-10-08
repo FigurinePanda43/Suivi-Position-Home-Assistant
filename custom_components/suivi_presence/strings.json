@@ -59,7 +59,7 @@
     },
     "export_excel": {
       "name": "Exporter en Excel",
-      "description": "Écrit un classeur .xlsx (feuille Résumé + une feuille par personne avec statistiques par zone) dans le dossier de configuration. Nécessite openpyxl.",
+      "description": "Écrit un classeur .xlsx (feuille Résumé + une feuille par personne avec statistiques par zone) dans le dossier de configuration.",
       "fields": {
         "filename": { "name": "Nom du fichier", "description": "Relatif au dossier de configuration ; l'extension .xlsx est ajoutée si besoin." },
         "start_date": { "name": "Date de début", "description": "Premier jour inclus (heure locale)." },

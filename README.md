@@ -1,7 +1,7 @@
 # Suivi de Présence pour Home Assistant
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/FigurinePanda43/Suivi-Position-Home-Assistant/blob/main/CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.0.2-blue.svg)](https://github.com/FigurinePanda43/Suivi-Position-Home-Assistant/blob/main/CHANGELOG.md)
 [![CI](https://github.com/FigurinePanda43/Suivi-Position-Home-Assistant/actions/workflows/ci.yml/badge.svg)](https://github.com/FigurinePanda43/Suivi-Position-Home-Assistant/actions/workflows/ci.yml)
 
 Enregistre **chaque changement de zone** des personnes de votre Home Assistant (maison → travail,

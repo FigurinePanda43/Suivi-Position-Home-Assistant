@@ -1,6 +1,6 @@
 /**
  * Suivi de Présence — carte Lovelace
- * Version 1.0.0
+ * Version 1.0.2
  *
  * Chargée automatiquement par l'intégration (aucune ressource à déclarer).
  * Sans dépendance : JavaScript natif, API websocket de l'intégration,
@@ -20,7 +20,7 @@
  *   stale_after_minutes: 120          # position GPS considérée ancienne au-delà
  */
 
-const CARD_VERSION = "1.0.0";
+const CARD_VERSION = "1.0.2";
 const CARD_TAG = "suivi-presence-card";
 
 const WS_OVERVIEW = "suivi_presence/overview";

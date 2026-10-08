@@ -17,7 +17,7 @@ async def test_overview(
     assert msg["success"], msg
     result = msg["result"]
     assert result["tracking"] is True
-    assert result["version"] == "1.0.0"
+    assert result["version"] == "1.0.2"
     assert result["excel_available"] is True
     persons = {p["entity_id"]: p for p in result["persons"]}
     assert set(persons) == {"person.jean", "person.marie"}
